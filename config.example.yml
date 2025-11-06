@@ -1,0 +1,14 @@
+database:
+  host: "localhost"
+  port: 65432
+  user: "postgres"
+  password: "postgres"
+  name: "goldie"
+  ssl-mode: "disable" # disable, allow, prefer, require, verify-ca, verify-full
+
+telegram:
+  token: ""
+
+logger:
+  level: "info" # debug, info, warn, error
+  gorm_level: "silent" # silent, info, warn, error
