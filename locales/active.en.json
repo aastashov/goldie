@@ -1,0 +1,10 @@
+[
+  {
+    "id": "startWelcomeMessage",
+    "translation": "Hello. This is Goldie, your assistant for buying and selling gold bars. Please select the functionality you need.\n\n/price \n/alert\n/help\n/lang"
+  },
+  {
+    "id": "greet",
+    "translation": "Hello, {{.Name}}!"
+  }
+]

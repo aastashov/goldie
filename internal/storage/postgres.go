@@ -7,6 +7,8 @@ import (
 	slogGorm "github.com/orandin/slog-gorm"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+
+	"goldie/internal/model"
 )
 
 type PostgresConnection struct {
@@ -43,7 +45,7 @@ func (s *PostgresConnection) MustClose() {
 
 func (s *PostgresConnection) MustMigration() {
 	err := s.DB.AutoMigrate(
-	// TODO: Add models
+		model.GoldPrice{},
 	)
 
 	if err != nil {
