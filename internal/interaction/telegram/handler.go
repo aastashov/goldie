@@ -1,12 +1,11 @@
 package telegram
 
 import (
-	"bytes"
 	"context"
-	"image/color"
-	"image/png"
+	"fmt"
+	"sort"
+	"strings"
 
-	"github.com/fogleman/gg"
 	telegramBot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -14,18 +13,7 @@ import (
 func (that *Interaction) handlerStart(ctx context.Context, bot *telegramBot.Bot, update *models.Update) {
 	log := that.logger.With("method", "handlerStart", "user_id", update.Message.From.ID, "language", update.Message.From.LanguageCode)
 
-	msg, err := that.renderLocaledMessage(update, "startWelcomeMessage")
-	if err != nil {
-		log.Error("failed to render message", "error", err)
-		return
-	}
-
-	_, err = bot.SendMessage(ctx, &telegramBot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   msg,
-	})
-
-	if err != nil {
+	if _, err := that.sendLocaledMessage(ctx, bot, update, "startWelcomeMessage"); err != nil {
 		log.Error("failed to send message", "error", err)
 		return
 	}
@@ -34,71 +22,50 @@ func (that *Interaction) handlerStart(ctx context.Context, bot *telegramBot.Bot,
 func (that *Interaction) handlerPrice(ctx context.Context, bot *telegramBot.Bot, update *models.Update) {
 	log := that.logger.With("method", "handlerPrice", "user_id", update.Message.From.ID)
 
-	// TODO: Change the data to the real data
-	data := [][]string{
-		{"Гр.", "Покупка", "Продажа"},
-		{"1.00", "12 526.00", "12 588.50"},
-		{"2.00", "23 775.00", "23 870.00"},
-		{"5.00", "57 656.50", "57 829.50"},
-		{"10.00", "113 495.50", "113 722.50"},
-		{"31.1035", "349 573.00", "354 816.50"},
-		{"100.00", "1 119 427.50", "1 153 010.50"},
-	}
-
-	const (
-		rowHeight = 45
-		colWidth  = 220
-		padding   = 40
-		fontSize  = 18
-	)
-
-	width := len(data[0])*colWidth + padding*2
-	height := len(data)*rowHeight + padding*2
-
-	dc := gg.NewContext(width, height)
-	dc.SetColor(color.White)
-	dc.Clear()
-
-	if err := dc.LoadFontFace("/System/Library/Fonts/SFNSMono.ttf", fontSize); err != nil {
-		log.Error("failed to load font", "error", err)
+	prices, err := that.pricesRepository.GetLatestPrices(ctx)
+	if err != nil {
+		log.Error("failed to get prices", "error", err)
 		return
 	}
 
-	dc.SetColor(color.Black)
-	y := float64(padding)
-	for i, row := range data {
-		x := float64(padding)
-		for _, col := range row {
-			dc.DrawStringAnchored(col, x+colWidth/2, y+rowHeight/2, 0.5, 0.5)
-			x += colWidth
+	if len(prices) == 0 {
+		if _, err = that.sendLocaledMessage(ctx, bot, update, "noPricesMessage"); err != nil {
+			log.Error("failed to send message", "error", err)
+			return
 		}
-		// Horizontal line
-		if i == 0 {
-			dc.SetLineWidth(2)
-		} else {
-			dc.SetLineWidth(1)
-		}
-		dc.DrawLine(float64(padding), y+rowHeight, float64(width-padding), y+rowHeight)
-		dc.Stroke()
-		y += rowHeight
-	}
 
-	buf := new(bytes.Buffer)
-	if err := png.Encode(buf, dc.Image()); err != nil {
-		log.Error("failed to encode image", "error", err)
 		return
 	}
 
-	_, err := bot.SendPhoto(ctx, &telegramBot.SendPhotoParams{
-		ChatID: update.Message.Chat.ID,
-		Photo: &models.InputFileUpload{
-			Filename: "gold_table.png",
-			Data:     bytes.NewReader(buf.Bytes()),
-		},
+	sort.SliceStable(prices, func(i, j int) bool {
+		if prices[i].Date.Equal(prices[j].Date) {
+			return prices[i].Weight < prices[j].Weight
+		}
+		return prices[i].Date.After(prices[j].Date)
 	})
 
-	if err != nil {
-		log.Error("failed to send message", "error", err)
+	currentDate := prices[0].Date
+	title, _ := that.renderLocaledMessage(update, "goldPricesTitle", "Date", currentDate.Format("2006-01-02"))
+	headerWeight, _ := that.renderLocaledMessage(update, "columnWeight")
+	headerBuy, _ := that.renderLocaledMessage(update, "columnBuy")
+	headerSell, _ := that.renderLocaledMessage(update, "columnSell")
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("<b>%s</b>\n<pre>\n", title))
+	sb.WriteString(fmt.Sprintf("%-8s %-12s %-12s\n", headerWeight, headerBuy, headerSell))
+
+	for _, p := range prices {
+		if !p.Date.Equal(currentDate) {
+			break
+		}
+		sb.WriteString(fmt.Sprintf("%-8.4g %-12.2f %-12.2f\n", p.Weight, p.PurchasePrice, p.SellPrice))
+	}
+
+	sb.WriteString("</pre>")
+	text := sb.String()
+
+	if _, err = bot.SendMessage(ctx, &telegramBot.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text, ParseMode: models.ParseModeHTML}); err != nil {
+		log.Error("error sending message", "error", err)
 		return
 	}
 }

@@ -39,3 +39,14 @@ func (that *Repository) SavePrices(ctx context.Context, prices []*model.GoldPric
 
 	return nil
 }
+
+func (that *Repository) GetLatestPrices(ctx context.Context) ([]*model.GoldPrice, error) {
+	var prices []*model.GoldPrice
+
+	query := that.db.WithContext(ctx).Where("date = (SELECT MAX(date) FROM gold_prices)").Order("weight asc")
+	if err := query.Find(&prices).Error; err != nil {
+		return nil, fmt.Errorf("get prices from database: %w", err)
+	}
+
+	return prices, nil
+}

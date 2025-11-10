@@ -1,0 +1,11 @@
+dir: "mocks/{{ .SrcPackageName }}"
+pkgname: "{{ .SrcPackageName }}Mock"
+filename: "{{ .SrcPackageName }}.go"
+force-file-write: true
+formatter: goimports
+log-level: info
+
+packages:
+  "github.com/go-telegram/bot":
+    interfaces:
+      HttpClient:

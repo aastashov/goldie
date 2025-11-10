@@ -15,7 +15,7 @@ type PostgresConnection struct {
 	DB *gorm.DB
 }
 
-func MustNewPostgresConnection(logger *slog.Logger, connectionString string, logLevel slog.Level) *PostgresConnection {
+func NewPostgresConnection(logger *slog.Logger, connectionString string, logLevel slog.Level) (*PostgresConnection, error) {
 	gormLogger := slogGorm.New(
 		slogGorm.WithHandler(logger.Handler()),
 		slogGorm.WithTraceAll(),
@@ -26,10 +26,19 @@ func MustNewPostgresConnection(logger *slog.Logger, connectionString string, log
 
 	db, err := gorm.Open(postgres.Open(connectionString), &gorm.Config{Logger: gormLogger})
 	if err != nil {
-		panic(fmt.Errorf("open connection: %w", err))
+		return nil, fmt.Errorf("open connection: %w", err)
 	}
 
-	return &PostgresConnection{DB: db}
+	return &PostgresConnection{DB: db}, nil
+}
+
+func MustNewPostgresConnection(logger *slog.Logger, connectionString string, logLevel slog.Level) *PostgresConnection {
+	conn, err := NewPostgresConnection(logger, connectionString, logLevel)
+	if err != nil {
+		panic(err)
+	}
+
+	return conn
 }
 
 func (s *PostgresConnection) MustClose() {

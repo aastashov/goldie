@@ -6,5 +6,25 @@
   {
     "id": "greet",
     "translation": "Hello, {{.Name}}!"
+  },
+  {
+    "id": "noPricesMessage",
+    "translation": "There are no gold prices for the current day"
+  },
+  {
+    "id": "goldPricesTitle",
+    "translation": "Gold prices on ({{.Date}})"
+  },
+  {
+    "id": "columnWeight",
+    "translation": "Gram"
+  },
+  {
+    "id": "columnBuy",
+    "translation": "Buy"
+  },
+  {
+    "id": "columnSell",
+    "translation": "Sell"
   }
 ]

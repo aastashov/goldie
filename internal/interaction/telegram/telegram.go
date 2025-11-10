@@ -4,30 +4,37 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"sync"
 	"time"
 
 	telegramBot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
+
+	"goldie/internal/model"
 )
 
 var ErrWrongNumberOfArguments = fmt.Errorf("wrong number of arguments")
 
+type PricesRepository interface {
+	GetLatestPrices(ctx context.Context) ([]*model.GoldPrice, error)
+}
+
 type Interaction struct {
-	logger *slog.Logger
-	tgBot  *telegramBot.Bot
-	bundle *i18n.Bundle
+	logger           *slog.Logger
+	TgBot            *telegramBot.Bot
+	bundle           *i18n.Bundle
+	pricesRepository PricesRepository
 
 	mu              sync.RWMutex
 	waitingMessages map[int64]struct{}
 }
 
-func NewInteraction(logger *slog.Logger, token string, client *http.Client, bundle *i18n.Bundle) *Interaction {
+func NewInteraction(logger *slog.Logger, token string, client telegramBot.HttpClient, bundle *i18n.Bundle, pricesRepository PricesRepository) *Interaction {
 	cnt := &Interaction{
-		logger: logger.With("component", "telegram"),
-		bundle: bundle,
+		logger:           logger.With("component", "telegram"),
+		bundle:           bundle,
+		pricesRepository: pricesRepository,
 	}
 
 	opts := []telegramBot.Option{
@@ -42,12 +49,12 @@ func NewInteraction(logger *slog.Logger, token string, client *http.Client, bund
 	b.RegisterHandler(telegramBot.HandlerTypeMessageText, "/help", telegramBot.MatchTypeExact, cnt.handlerHelp)
 	b.RegisterHandler(telegramBot.HandlerTypeMessageText, "/delete", telegramBot.MatchTypeExact, cnt.handlerDelete)
 
-	cnt.tgBot = b
+	cnt.TgBot = b
 	return cnt
 }
 
 func (that *Interaction) Start(ctx context.Context) {
-	that.tgBot.Start(ctx)
+	that.TgBot.Start(ctx)
 }
 
 func (that *Interaction) handler(ctx context.Context, bot *telegramBot.Bot, update *models.Update) {
@@ -75,6 +82,17 @@ func (that *Interaction) handleWaitingMessage(ctx context.Context, bot *telegram
 	log.Info("handling waiting for login")
 }
 
+// getUserLocalizer returns a localizer for the user.
+func (that *Interaction) getUserLocalizer(update *models.Update) *i18n.Localizer {
+	lang := update.Message.From.LanguageCode // "en", "ru", etc.
+	if lang == "" {
+		lang = "en"
+	}
+
+	return i18n.NewLocalizer(that.bundle, lang)
+}
+
+// renderLocaledMessage renders a localized message.
 func (that *Interaction) renderLocaledMessage(update *models.Update, messageID string, args ...string) (string, error) {
 	if len(args)%2 != 0 {
 		return "", ErrWrongNumberOfArguments
@@ -85,13 +103,25 @@ func (that *Interaction) renderLocaledMessage(update *models.Update, messageID s
 		templateData[args[i]] = args[i+1]
 	}
 
-	that.logger.With("lang", update.Message.From.LanguageCode).Info("render localed message")
-
-	lang := update.Message.From.LanguageCode // "en", "ru", etc.
-	if lang == "" {
-		lang = "en"
+	text, err := that.getUserLocalizer(update).Localize(&i18n.LocalizeConfig{MessageID: messageID, TemplateData: templateData})
+	if err != nil {
+		return "", fmt.Errorf("localize message: %w", err)
 	}
 
-	localizer := i18n.NewLocalizer(that.bundle, lang)
-	return localizer.Localize(&i18n.LocalizeConfig{MessageID: messageID, TemplateData: templateData})
+	return text, nil
+}
+
+// sendLocaledMessage sends a localized message to the user.
+func (that *Interaction) sendLocaledMessage(ctx context.Context, bot *telegramBot.Bot, update *models.Update, messageID string, args ...string) (*models.Message, error) {
+	text, err := that.renderLocaledMessage(update, messageID, args...)
+	if err != nil {
+		return nil, fmt.Errorf("render localed message: %w", err)
+	}
+
+	msg, err := bot.SendMessage(ctx, &telegramBot.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text})
+	if err != nil {
+		return nil, fmt.Errorf("send message to telegram user: %w", err)
+	}
+
+	return msg, nil
 }

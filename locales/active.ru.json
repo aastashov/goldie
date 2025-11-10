@@ -6,5 +6,25 @@
   {
     "id": "greet",
     "translation": "Привет, {{.Name}}!"
+  },
+  {
+    "id": "noPricesMessage",
+    "translation": "На текущий день нет цен мерных слитков"
+  },
+  {
+    "id": "goldPricesTitle",
+    "translation": "Цены мерных слитков на ({{.Date}})"
+  },
+  {
+    "id": "columnWeight",
+    "translation": "Грамм"
+  },
+  {
+    "id": "columnBuy",
+    "translation": "Покупка"
+  },
+  {
+    "id": "columnSell",
+    "translation": "Продажа"
   }
 ]

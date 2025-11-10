@@ -2,14 +2,11 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"github.com/spf13/cobra"
 	"go.uber.org/atomic"
-	"golang.org/x/text/language"
 
 	"goldie/internal/interaction/nbkr"
 	"goldie/internal/interaction/telegram"
@@ -17,6 +14,7 @@ import (
 	"goldie/internal/scheduler"
 	"goldie/internal/storage"
 	"goldie/internal/usecases"
+	"goldie/locales"
 )
 
 var isReady = atomic.NewBool(false)
@@ -48,12 +46,7 @@ var serveCmd = &cobra.Command{
 		// Initialize repository
 		pricesRepository := prices.NewRepository(postgresConnection.DB)
 
-		bundle := i18n.NewBundle(language.English)
-		bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
-
-		_, err := bundle.LoadMessageFile("locales/active.en.json")
-		cobra.CheckErr(err)
-		_, err = bundle.LoadMessageFile("locales/active.ru.json")
+		bundle, err := locales.GetBundle("")
 		cobra.CheckErr(err)
 
 		// Initialize HTTP clients
@@ -61,7 +54,7 @@ var serveCmd = &cobra.Command{
 		nbkrClient := &http.Client{Timeout: time.Minute}
 
 		// Initialize interactions
-		telegramInteractor := telegram.NewInteraction(logger, cnf.Telegram.Token, telegramClient, bundle)
+		telegramInteractor := telegram.NewInteraction(logger, cnf.Telegram.Token, telegramClient, bundle, pricesRepository)
 		nbkrInteractor := nbkr.NewInteraction(logger, nbkrClient)
 
 		// Initialize usecases
@@ -75,6 +68,8 @@ var serveCmd = &cobra.Command{
 			log.Info("running NBKR update")
 			updatePriceUC.UpdatePrices(ctx)
 		})
+
+		updatePriceUC.UpdatePrices(ctx) // TODO: Remove this line
 
 		isReady.Store(true)
 		log.Info("starting telegram bot")

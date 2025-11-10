@@ -5,7 +5,7 @@ import "time"
 // GoldPrice describes a gold price.
 // Unique index are Date and Weight together.
 type GoldPrice struct {
-	Date          string    `gorm:"column:date;uniqueIndex:date_weight"`
+	Date          time.Time `gorm:"column:date;uniqueIndex:date_weight"`
 	Weight        float64   `gorm:"column:weight;uniqueIndex:date_weight"`
 	PurchasePrice float64   `gorm:"column:purchase_price"`
 	SellPrice     float64   `gorm:"column:sell_price"`
