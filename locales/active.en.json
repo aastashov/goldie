@@ -1,7 +1,7 @@
 [
   {
     "id": "startWelcomeMessage",
-    "translation": "Hello. This is Goldie, your assistant for buying and selling gold bars. Please select the functionality you need.\n\n/price \n/alert\n/help\n/lang"
+    "translation": "Hello. This is Goldie, your assistant for buying and selling gold bars. Please select the functionality you need.\n\n/price — Show current gold price\n/alert — Configure your alerts"
   },
   {
     "id": "greet",
@@ -26,5 +26,9 @@
   {
     "id": "columnSell",
     "translation": "Sell"
+  },
+  {
+    "id": "helpMessage",
+    "translation": "/start — Choose your language\n/price — Show current gold price\n/alert — Configure your alerts"
   }
 ]

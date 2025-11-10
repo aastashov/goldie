@@ -28,9 +28,9 @@ func newUpdate(userID int64, languageCode string, text string) *models.Update {
 }
 
 func Test_HandlerPrice(t *testing.T) {
-	st, ctx := suite.New(t, suite.WithPostgres())
+	ctx, st := suite.New(t, suite.WithPostgres())
 
-	pricesRepository := prices.NewRepository(st.Conn.DB)
+	pricesRepository := prices.NewRepository(st.GetDB())
 	bundle, err := locales.GetBundle(st.BaseDir + "/")
 	require.NoError(t, err)
 
@@ -40,14 +40,14 @@ func Test_HandlerPrice(t *testing.T) {
 		{Date: currentDate, Weight: 1, PurchasePrice: 12345, SellPrice: 12588},
 		{Date: currentDate.Add(-24 * time.Hour), Weight: 2, PurchasePrice: 12345, SellPrice: 12588},
 	}
-	require.NoError(t, st.Conn.DB.WithContext(ctx).Create(&dbPrices).Error)
+	require.NoError(t, st.GetDB().WithContext(ctx).Create(&dbPrices).Error)
 
 	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
 		mockedHTTPClient := botMock.NewMockHttpClient(t)
 		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, pricesRepository), mockedHTTPClient
 	}
 
-	t.Run("should return prices for the user on the last available date", func(t *testing.T) {
+	t.Run("should return prices for the user on the last available date - en", func(t *testing.T) {
 		interaction, mockedHTTPClient := newInteractionHandler()
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
@@ -61,6 +61,76 @@ func Test_HandlerPrice(t *testing.T) {
 
 		// When: We send the /price command
 		interaction.TgBot.ProcessUpdate(ctx, newUpdate(1, "en", "/price"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+	})
+
+	t.Run("should return prices for the user on the last available date - ru", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the prices
+			require.Equal(t, "1", formData["chat_id"])
+			require.Equal(t, "<b>Цены мерных слитков на (2024-10-01)</b>\n<pre>\nГрамм    Покупка      Продажа     \n1        12345.00     12588.00    \n</pre>", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		// When: We send the /price command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(1, "ru", "/price"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+	})
+}
+
+func Test_HandlerHelp(t *testing.T) {
+	ctx, st := suite.New(t)
+
+	pricesRepository := prices.NewRepository(st.GetDB())
+	bundle, err := locales.GetBundle(st.BaseDir + "/")
+	require.NoError(t, err)
+
+	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
+		mockedHTTPClient := botMock.NewMockHttpClient(t)
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, pricesRepository), mockedHTTPClient
+	}
+
+	t.Run("should return help message - en", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the help message
+			require.Equal(t, "1", formData["chat_id"])
+			require.Equal(t, "/start — Choose your language\n/price — Show current gold price\n/alert — Configure your alerts", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		// When: We send the /help command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(1, "en", "/help"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+	})
+
+	t.Run("should return help message - ru", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the help message
+			require.Equal(t, "1", formData["chat_id"])
+			require.Equal(t, "/start — Выберите язык\n/price — Показать текущую цену мерных слитков\n/alert — Настроить свои предупреждения", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		// When: We send the /help command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(1, "ru", "/help"))
 
 		// Wait for the handler to be executed
 		time.Sleep(time.Millisecond * 100)

@@ -47,7 +47,6 @@ func NewInteraction(logger *slog.Logger, token string, client telegramBot.HttpCl
 	b.RegisterHandler(telegramBot.HandlerTypeMessageText, "/start", telegramBot.MatchTypeExact, cnt.handlerStart)
 	b.RegisterHandler(telegramBot.HandlerTypeMessageText, "/price", telegramBot.MatchTypeExact, cnt.handlerPrice)
 	b.RegisterHandler(telegramBot.HandlerTypeMessageText, "/help", telegramBot.MatchTypeExact, cnt.handlerHelp)
-	b.RegisterHandler(telegramBot.HandlerTypeMessageText, "/delete", telegramBot.MatchTypeExact, cnt.handlerDelete)
 
 	cnt.TgBot = b
 	return cnt

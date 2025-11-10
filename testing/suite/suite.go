@@ -11,6 +11,7 @@ import (
 
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"gorm.io/gorm"
 
 	"goldie/internal/storage"
 )
@@ -27,7 +28,7 @@ type Suite struct {
 	Conn *storage.PostgresConnection
 }
 
-func New(t *testing.T, opts ...Option) (*Suite, context.Context) {
+func New(t *testing.T, opts ...Option) (context.Context, *Suite) {
 	ctx := context.Background()
 
 	baseDir, err := findProjectRoot()
@@ -41,7 +42,15 @@ func New(t *testing.T, opts ...Option) (*Suite, context.Context) {
 	for _, opt := range opts {
 		opt(s)
 	}
-	return s, ctx
+	return ctx, s
+}
+
+func (s *Suite) GetDB() *gorm.DB {
+	if s.Conn == nil {
+		return nil
+	}
+
+	return s.Conn.DB
 }
 
 func findProjectRoot() (string, error) {
