@@ -8,6 +8,7 @@ import (
 
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"github.com/spf13/cobra"
+	"go.uber.org/atomic"
 	"golang.org/x/text/language"
 
 	"goldie/internal/interaction/nbkr"
@@ -18,11 +19,25 @@ import (
 	"goldie/internal/usecases"
 )
 
+var isReady = atomic.NewBool(false)
+
 var serveCmd = &cobra.Command{
 	Use: "serve",
 	Run: func(cmd *cobra.Command, _ []string) {
 		log := logger.With("package", "cmd")
 		ctx := cmd.Context()
+
+		go func() {
+			http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+				if !isReady.Load() {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+
+				w.WriteHeader(http.StatusOK)
+			})
+			_ = http.ListenAndServe(":8080", nil)
+		}()
 
 		// Initialize database connection
 		postgresConnection := storage.MustNewPostgresConnection(logger, cnf.Database.ConnString(), cnf.Logger.ParsedGORMLevel)
@@ -61,6 +76,7 @@ var serveCmd = &cobra.Command{
 			updatePriceUC.UpdatePrices(ctx)
 		})
 
+		isReady.Store(true)
 		log.Info("starting telegram bot")
 		telegramInteractor.Start(ctx)
 	},

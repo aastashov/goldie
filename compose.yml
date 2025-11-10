@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  goldie:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goldie
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Bishkek
+      - DATABASE_URL=postgres://user:password@postgres:5432/goldie?sslmode=disable
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    command: ["./goldie", "serve"]
+
+  postgres:
+    image: postgres:16
+    container_name: goldie-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: goldie
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d goldie"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
