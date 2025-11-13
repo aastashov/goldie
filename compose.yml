@@ -2,20 +2,18 @@ version: "3.9"
 
 services:
   goldie:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/aastashov/goldie:latest
     container_name: goldie
     restart: unless-stopped
     environment:
       - TZ=Asia/Bishkek
-      - DATABASE_URL=postgres://user:password@postgres:5432/goldie?sslmode=disable
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "8080:8080"
+    volumes:
+      - ./config.yml:/app/config.yml:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -25,7 +23,7 @@ services:
     command: ["./goldie", "serve"]
 
   postgres:
-    image: postgres:16
+    image: postgres:18-alpine
     container_name: goldie-postgres
     restart: unless-stopped
     environment:
