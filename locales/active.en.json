@@ -28,6 +28,10 @@
     "translation": "Sell"
   },
   {
+    "id": "columnGain",
+    "translation": "Gain"
+  },
+  {
     "id": "helpMessage",
     "translation": "/start — Choose your language\n/price — Show current gold price\n/alert — Configure your alerts"
   },

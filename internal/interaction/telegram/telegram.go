@@ -69,6 +69,11 @@ func (that *Interaction) Start(ctx context.Context) {
 	that.TgBot.Start(ctx)
 }
 
+func (that *Interaction) SendMessage(ctx context.Context, chatID int64, text string) error {
+	_, err := that.TgBot.SendMessage(ctx, &tg.SendMessageParams{ChatID: chatID, Text: text})
+	return err
+}
+
 func (that *Interaction) handler(_ context.Context, _ *tg.Bot, update *models.Update) {
 	log := that.logger.With("method", "handler")
 	log.Info("handling message", "update", update)

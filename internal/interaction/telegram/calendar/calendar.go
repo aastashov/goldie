@@ -95,6 +95,8 @@ func (c *Calendar) sendYearPicker(ctx context.Context, b *tg.Bot, languageCode s
 		years = append(years, i)
 	}
 
+	// TODO: Need to add more than one row to the keyboard if year range is more than N years
+
 	var rows [][]models.InlineKeyboardButton
 	var row []models.InlineKeyboardButton
 	for _, y := range years {

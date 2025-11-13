@@ -2,9 +2,6 @@ package telegram
 
 import (
 	"context"
-	"fmt"
-	"sort"
-	"strings"
 	"time"
 
 	tg "github.com/go-telegram/bot"
@@ -38,35 +35,9 @@ func (that *Interaction) handlerPrice(ctx context.Context, bot *tg.Bot, update *
 		return
 	}
 
-	sort.SliceStable(prices, func(i, j int) bool {
-		if prices[i].Date.Equal(prices[j].Date) {
-			return prices[i].Weight < prices[j].Weight
-		}
-		return prices[i].Date.After(prices[j].Date)
-	})
-
 	languageCode := update.Message.From.LanguageCode
 
-	currentDate := prices[0].Date
-	title, _ := that.renderLocaledMessage(languageCode, "goldPricesTitle", "Date", currentDate.Format("2006-01-02"))
-	headerWeight, _ := that.renderLocaledMessage(languageCode, "columnWeight")
-	headerBuy, _ := that.renderLocaledMessage(languageCode, "columnBuy")
-	headerSell, _ := that.renderLocaledMessage(languageCode, "columnSell")
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("<b>%s</b>\n<pre>\n", title))
-	sb.WriteString(fmt.Sprintf("%-8s %-12s %-12s\n", headerWeight, headerBuy, headerSell))
-
-	for _, p := range prices {
-		if !p.Date.Equal(currentDate) {
-			break
-		}
-		sb.WriteString(fmt.Sprintf("%-8.4g %-12.2f %-12.2f\n", p.Weight, p.PurchasePrice, p.SellPrice))
-	}
-
-	sb.WriteString("</pre>")
-	text := sb.String()
-
+	text := that.PricesToString(languageCode, prices)
 	if _, err = bot.SendMessage(ctx, &tg.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text, ParseMode: models.ParseModeHTML}); err != nil {
 		log.Error("error sending message", "error", err)
 		return

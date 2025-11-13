@@ -28,6 +28,10 @@
     "translation": "Продажа"
   },
   {
+    "id": "columnGain",
+    "translation": "Прибыль"
+  },
+  {
     "id": "helpMessage",
     "translation": "/start — Выберите язык\n/price — Показать текущую цену мерных слитков\n/alert — Настроить свои предупреждения"
   },

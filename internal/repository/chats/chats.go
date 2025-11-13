@@ -51,3 +51,38 @@ func (that *Repository) EnableAlert2(ctx context.Context, chatID int64, date tim
 
 	return nil
 }
+
+func (that *Repository) FetchChatsWithBuyingPrices(ctx context.Context) ([]*model.TgChat, error) {
+	var chats []*model.TgChat
+
+	query := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("alert1_enabled = true OR alert2_enabled = true")
+	if err := query.Find(&chats).Error; err != nil {
+		return nil, fmt.Errorf("fetch chats with buying prices from database: %w", err)
+	}
+
+	datesToFetch := make(map[time.Time]struct{}, len(chats))
+	for _, chat := range chats {
+		if chat.Alert2Enabled && !chat.Alert2Date.IsZero() {
+			datesToFetch[chat.Alert2Date] = struct{}{}
+		}
+	}
+
+	var prices []*model.GoldPrice
+	goldPricesQuery := that.db.WithContext(ctx).Model(&model.GoldPrice{}).Where("date IN (?)", datesToFetch)
+	if err := goldPricesQuery.Find(&prices).Error; err != nil {
+		return nil, fmt.Errorf("fetch prices from database: %w", err)
+	}
+
+	pricesMap := make(map[time.Time][]*model.GoldPrice, len(prices))
+	for _, price := range prices {
+		pricesMap[price.Date] = append(pricesMap[price.Date], price)
+	}
+
+	for _, chat := range chats {
+		if chat.Alert2Enabled {
+			chat.BuyingPrices = pricesMap[chat.Alert2Date]
+		}
+	}
+
+	return chats, nil
+}

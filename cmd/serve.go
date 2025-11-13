@@ -63,6 +63,10 @@ var serveCmd = &cobra.Command{
 
 		// Initialize usecases
 		updatePriceUC := usecases.NewUpdatePricesUseCase(logger, pricesRepository, nbkrInteractor, loc)
+		alertUC := usecases.NewAlertUseCase(logger, bundle, loc, pricesRepository, chatsRepository, telegramInteractor)
+
+		// We need to run the first import to fetch the old data
+		go updatePriceUC.FirstImport(ctx)
 
 		// Initialize scheduler
 		sched := scheduler.New(ctx, loc)
@@ -72,8 +76,13 @@ var serveCmd = &cobra.Command{
 			updatePriceUC.UpdatePrices(ctx)
 		})
 
-		// We need to run the first import to fetch the old data
-		go updatePriceUC.FirstImport(ctx)
+		sched.Add("0 10 * * 1-5", func(ctx context.Context) {
+			log.Info("running alert")
+			alertUC.Run(ctx)
+		})
+
+		// Start scheduler
+		go sched.Start()
 
 		isReady.Store(true)
 		log.Info("starting telegram bot")
