@@ -30,5 +30,117 @@
   {
     "id": "helpMessage",
     "translation": "/start — Choose your language\n/price — Show current gold price\n/alert — Configure your alerts"
+  },
+  {
+    "id": "alertMessage",
+    "translation": "Please, select the alert you want to configure:\n/alert1 — send daily summaries of gold prices\n/alert2 — send daily summaries of how much i will earn if i sell today"
+  },
+  {
+    "id": "createAlert1Message",
+    "translation": "Done. I'll send you an alert about the gold selling price every day at 10:00 AM (UTC +6)"
+  },
+  {
+    "id": "createAlert2CalendarMessage",
+    "translation": "Send me the date of purchase (day, month, year)"
+  },
+  {
+    "id": "createAlert2Message",
+    "translation": "Done. I'll send you an alert about how much I'll earn if you sell today at 10:00 AM (UTC +6)"
+  },
+  {
+    "id": "chooseYear",
+    "translation": "📅 Choose year:"
+  },
+  {
+    "id": "chooseMonth",
+    "translation": "📅 {{.Year}} — choose month:"
+  },
+  {
+    "id": "chooseMonth.prev",
+    "translation": "« Years"
+  },
+  {
+    "id": "chooseDay",
+    "translation": "📅 {{.Year}} {{.Month}} — choose day:"
+  },
+  {
+    "id": "chooseDay.prev",
+    "translation": "« Months"
+  },
+  {
+    "id": "month.Jan",
+    "translation": "January"
+  },
+  {
+    "id": "month.Feb",
+    "translation": "February"
+  },
+  {
+    "id": "month.Mar",
+    "translation": "March"
+  },
+  {
+    "id": "month.Apr",
+    "translation": "April"
+  },
+  {
+    "id": "month.May",
+    "translation": "May"
+  },
+  {
+    "id": "month.Jun",
+    "translation": "June"
+  },
+  {
+    "id": "month.Jul",
+    "translation": "July"
+  },
+  {
+    "id": "month.Aug",
+    "translation": "August"
+  },
+  {
+    "id": "month.Sep",
+    "translation": "September"
+  },
+  {
+    "id": "month.Oct",
+    "translation": "October"
+  },
+  {
+    "id": "month.Nov",
+    "translation": "November"
+  },
+  {
+    "id": "month.Dec",
+    "translation": "December"
+  },
+  {
+    "id": "day.Mon",
+    "translation": "Monday"
+  },
+  {
+    "id": "day.Tue",
+    "translation": "Tuesday"
+  },
+  {
+    "id": "day.Wed",
+    "translation": "Wednesday"
+  },
+  {
+    "id": "day.Thu",
+    "translation": "Thursday"
+  },
+  {
+    "id": "day.Fri",
+    "translation": "Friday"
+  },
+  {
+    "id": "day.Sat",
+    "translation": "Saturday"
+  },
+  {
+    "id": "day.Sun",
+    "translation": "Sunday"
   }
 ]

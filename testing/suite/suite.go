@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
@@ -24,6 +25,7 @@ type Suite struct {
 	T       *testing.T
 	Logger  *slog.Logger
 	BaseDir string
+	Loc     *time.Location
 
 	Conn *storage.PostgresConnection
 }
@@ -36,7 +38,7 @@ func New(t *testing.T, opts ...Option) (context.Context, *Suite) {
 		t.Fatalf("could not get current working directory: %v", err)
 	}
 
-	s := &Suite{T: t, Logger: slog.Default(), BaseDir: baseDir}
+	s := &Suite{T: t, Logger: slog.Default(), BaseDir: baseDir, Loc: time.FixedZone("Asia/Bishkek", 6*3600)}
 	s.Logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	for _, opt := range opts {
@@ -46,7 +48,10 @@ func New(t *testing.T, opts ...Option) (context.Context, *Suite) {
 }
 
 func (s *Suite) GetDB() *gorm.DB {
+	s.T.Helper()
+
 	if s.Conn == nil {
+		s.T.Fatal("Database connection is not initialized! Use suite.New(t, suite.WithPostgres()) option.")
 		return nil
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	"goldie/internal/interaction/nbkr"
 	"goldie/internal/interaction/telegram"
+	"goldie/internal/repository/chats"
 	"goldie/internal/repository/prices"
 	"goldie/internal/scheduler"
 	"goldie/internal/storage"
@@ -37,6 +38,8 @@ var serveCmd = &cobra.Command{
 			_ = http.ListenAndServe(":8080", nil)
 		}()
 
+		loc := time.FixedZone("Asia/Bishkek", 6*3600)
+
 		// Initialize database connection
 		postgresConnection := storage.MustNewPostgresConnection(logger, cnf.Database.ConnString(), cnf.Logger.ParsedGORMLevel)
 		defer postgresConnection.MustClose()
@@ -45,6 +48,7 @@ var serveCmd = &cobra.Command{
 
 		// Initialize repository
 		pricesRepository := prices.NewRepository(postgresConnection.DB)
+		chatsRepository := chats.NewRepository(postgresConnection.DB)
 
 		bundle, err := locales.GetBundle("")
 		cobra.CheckErr(err)
@@ -54,14 +58,13 @@ var serveCmd = &cobra.Command{
 		nbkrClient := &http.Client{Timeout: time.Minute}
 
 		// Initialize interactions
-		telegramInteractor := telegram.NewInteraction(logger, cnf.Telegram.Token, telegramClient, bundle, pricesRepository)
+		telegramInteractor := telegram.NewInteraction(logger, cnf.Telegram.Token, telegramClient, bundle, pricesRepository, chatsRepository)
 		nbkrInteractor := nbkr.NewInteraction(logger, nbkrClient)
 
 		// Initialize usecases
-		updatePriceUC := usecases.NewUpdatePricesUsecase(logger, pricesRepository, nbkrInteractor)
+		updatePriceUC := usecases.NewUpdatePricesUseCase(logger, pricesRepository, nbkrInteractor, loc)
 
 		// Initialize scheduler
-		loc := time.FixedZone("Asia/Bishkek", 6*3600)
 		sched := scheduler.New(ctx, loc)
 
 		sched.Add("15 9 * * 1-5", func(ctx context.Context) {
@@ -69,7 +72,8 @@ var serveCmd = &cobra.Command{
 			updatePriceUC.UpdatePrices(ctx)
 		})
 
-		updatePriceUC.UpdatePrices(ctx) // TODO: Remove this line
+		// We need to run the first import to fetch the old data
+		go updatePriceUC.FirstImport(ctx)
 
 		isReady.Store(true)
 		log.Info("starting telegram bot")

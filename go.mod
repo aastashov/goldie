@@ -4,6 +4,7 @@ go 1.24.7
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
+	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/go-co-op/gocron v1.37.0
 	github.com/go-telegram/bot v1.17.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0

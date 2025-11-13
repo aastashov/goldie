@@ -55,6 +55,7 @@ func (s *PostgresConnection) MustClose() {
 func (s *PostgresConnection) MustMigration() {
 	err := s.DB.AutoMigrate(
 		model.GoldPrice{},
+		model.TgChat{},
 	)
 
 	if err != nil {
