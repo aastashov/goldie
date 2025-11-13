@@ -121,30 +121,30 @@
   },
   {
     "id": "day.Mon",
-    "translation": "Monday"
+    "translation": "Mon"
   },
   {
     "id": "day.Tue",
-    "translation": "Tuesday"
+    "translation": "Tue"
   },
   {
     "id": "day.Wed",
-    "translation": "Wednesday"
+    "translation": "Wed"
   },
   {
     "id": "day.Thu",
-    "translation": "Thursday"
+    "translation": "Thu"
   },
   {
     "id": "day.Fri",
-    "translation": "Friday"
+    "translation": "Fri"
   },
   {
     "id": "day.Sat",
-    "translation": "Saturday"
+    "translation": "Sat"
   },
   {
     "id": "day.Sun",
-    "translation": "Sunday"
+    "translation": "Sun"
   }
 ]

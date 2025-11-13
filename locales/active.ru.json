@@ -113,30 +113,30 @@
   },
   {
     "id": "day.Mon",
-    "translation": "Понедельник"
+    "translation": "Пн"
   },
   {
     "id": "day.Tue",
-    "translation": "Вторник"
+    "translation": "Вт"
   },
   {
     "id": "day.Wed",
-    "translation": "Среда"
+    "translation": "Ср"
   },
   {
     "id": "day.Thu",
-    "translation": "Четверг"
+    "translation": "Чт"
   },
   {
     "id": "day.Fri",
-    "translation": "Пятница"
+    "translation": "Пт"
   },
   {
     "id": "day.Sat",
-    "translation": "Суббота"
+    "translation": "Сб"
   },
   {
     "id": "day.Sun",
-    "translation": "Воскресенье"
+    "translation": "Вс"
   }
 ]

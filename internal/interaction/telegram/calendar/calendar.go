@@ -44,7 +44,7 @@ func (c *Calendar) HandleCallback(ctx context.Context, b *tg.Bot, languageCode s
 
 	parts := strings.Split(data, ":")
 	if len(parts) < 3 {
-		return fmt.Errorf("invalid callback data")
+		return nil
 	}
 
 	chatID := update.CallbackQuery.Message.Message.Chat.ID
@@ -95,17 +95,25 @@ func (c *Calendar) sendYearPicker(ctx context.Context, b *tg.Bot, languageCode s
 		years = append(years, i)
 	}
 
-	// TODO: Need to add more than one row to the keyboard if year range is more than N years
-
+	const maxPerRow = 4
 	var rows [][]models.InlineKeyboardButton
 	var row []models.InlineKeyboardButton
+
 	for _, y := range years {
 		row = append(row, models.InlineKeyboardButton{
-			Text:         fmt.Sprintf("%d", y),
+			Text:         strconv.Itoa(y),
 			CallbackData: fmt.Sprintf("cal:year:%d", y),
 		})
+
+		if len(row) == maxPerRow {
+			rows = append(rows, row)
+			row = []models.InlineKeyboardButton{}
+		}
 	}
-	rows = append(rows, row)
+
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
 
 	markup := &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 
@@ -126,18 +134,31 @@ func (c *Calendar) sendMonthPicker(ctx context.Context, b *tg.Bot, languageCode 
 		return fmt.Errorf("get localized text: %w", err)
 	}
 
-	// TODO: Need to account the dateStart and dateEnd for the selected year
-
 	months := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+
+	// Determine the start and end months for the selected year
+	startMonth := 1
+	endMonth := 12
+	if selectedYear == dateStart.Year() {
+		startMonth = int(dateStart.Month())
+	}
+	if selectedYear == dateEnd.Year() {
+		endMonth = int(dateEnd.Month())
+	}
+
 	var rows [][]models.InlineKeyboardButton
 	var row []models.InlineKeyboardButton
+	localizer := i18n.NewLocalizer(c.bundle, languageCode)
 
 	for i, name := range months {
-		txt, _ := i18n.NewLocalizer(c.bundle, languageCode).Localize(&i18n.LocalizeConfig{MessageID: "month." + name})
-		row = append(row, models.InlineKeyboardButton{
-			Text:         txt,
-			CallbackData: fmt.Sprintf("cal:month:%04d-%02d", selectedYear, i+1),
-		})
+		btn := models.InlineKeyboardButton{Text: "⛔", CallbackData: "cal:noop"}
+
+		if i+1 >= startMonth && i+1 <= endMonth {
+			btn.Text, _ = localizer.Localize(&i18n.LocalizeConfig{MessageID: "month." + name})
+			btn.CallbackData = fmt.Sprintf("cal:month:%04d-%02d", selectedYear, i+1)
+		}
+
+		row = append(row, btn)
 		if len(row) == 3 {
 			rows = append(rows, row)
 			row = []models.InlineKeyboardButton{}
@@ -148,9 +169,9 @@ func (c *Calendar) sendMonthPicker(ctx context.Context, b *tg.Bot, languageCode 
 	}
 
 	// add "back to years" button
-	txt, _ := i18n.NewLocalizer(c.bundle, languageCode).Localize(&i18n.LocalizeConfig{MessageID: "chooseMonth.prev"})
+	backTxt, _ := i18n.NewLocalizer(c.bundle, languageCode).Localize(&i18n.LocalizeConfig{MessageID: "chooseMonth.prev"})
 	rows = append(rows, []models.InlineKeyboardButton{
-		{Text: txt, CallbackData: fmt.Sprintf("cal:back:year")},
+		{Text: backTxt, CallbackData: fmt.Sprintf("cal:back:year")},
 	})
 
 	markup := &models.InlineKeyboardMarkup{InlineKeyboard: rows}
@@ -167,8 +188,6 @@ func (c *Calendar) sendDayPicker(ctx context.Context, b *tg.Bot, languageCode st
 	if err != nil {
 		return fmt.Errorf("get localized text: %w", err)
 	}
-
-	// TODO: Need to account the dateStart and dateEnd for the selected year and month
 
 	first := time.Date(selectedYear, selectedMonth, 1, 0, 0, 0, 0, time.Local)
 	last := first.AddDate(0, 1, -1)
@@ -210,6 +229,12 @@ func (c *Calendar) sendDayPicker(ctx context.Context, b *tg.Bot, languageCode st
 				callbackData = "cal:noop"
 				break
 			}
+		}
+
+		// disable days outside the date range
+		if date.Before(dateStart) || date.After(dateEnd) {
+			btnText = "⛔"
+			callbackData = "cal:noop"
 		}
 
 		row = append(row, models.InlineKeyboardButton{Text: btnText, CallbackData: callbackData})
