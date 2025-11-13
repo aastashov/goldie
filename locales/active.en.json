@@ -52,6 +52,10 @@
     "translation": "Done. I'll send you an alert about how much I'll earn if you sell today at 10:00 AM (UTC +6)"
   },
   {
+    "id": "createAlert2CallbackMessage",
+    "translation": "✅ Selected date: {{.Date}}"
+  },
+  {
     "id": "chooseYear",
     "translation": "📅 Choose year:"
   },

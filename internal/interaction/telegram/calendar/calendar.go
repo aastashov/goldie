@@ -16,7 +16,7 @@ const Prefix = "cal:"
 
 var ErrWrongNumberOfLocalizedArguments = fmt.Errorf("wrong number of localized arguments")
 
-type SelectedDateCallback func(ctx context.Context, b *tg.Bot, languageCode string, chatID int64, messageID int, date time.Time)
+type SelectedDateCallback func(ctx context.Context, b *tg.Bot, languageCode string, callBackQueryID string, chatID int64, messageID int, date time.Time)
 
 type Calendar struct {
 	disableDays          []time.Weekday
@@ -37,6 +37,16 @@ func (c *Calendar) SendCalendar(ctx context.Context, b *tg.Bot, languageCode str
 }
 
 func (c *Calendar) HandleCallback(ctx context.Context, b *tg.Bot, languageCode string, update *models.Update, dateStart time.Time, dateEnd time.Time) error {
+	var hideAnswerCallback bool
+
+	defer func() {
+		if hideAnswerCallback {
+			_, _ = b.AnswerCallbackQuery(ctx, &tg.AnswerCallbackQueryParams{
+				CallbackQueryID: update.CallbackQuery.ID,
+			})
+		}
+	}()
+
 	data := update.CallbackQuery.Data
 	if !strings.HasPrefix(data, Prefix) {
 		return fmt.Errorf("invalid callback data")
@@ -78,7 +88,8 @@ func (c *Calendar) HandleCallback(ctx context.Context, b *tg.Bot, languageCode s
 			return fmt.Errorf("parse selected date: %w", err)
 		}
 
-		c.selectedDateCallback(ctx, b, languageCode, chatID, messageID, selected)
+		hideAnswerCallback = true
+		c.selectedDateCallback(ctx, b, languageCode, update.CallbackQuery.ID, chatID, messageID, selected)
 	}
 
 	return nil

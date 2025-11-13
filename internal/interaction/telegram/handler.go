@@ -108,15 +108,24 @@ func (that *Interaction) handlerAlert2CalendarCallback(ctx context.Context, bot 
 	}
 }
 
-func (that *Interaction) handlerAlert2SelectedDate(ctx context.Context, bot *tg.Bot, languageCode string, chatID int64, messageID int, selected time.Time) {
+func (that *Interaction) handlerAlert2SelectedDate(ctx context.Context, bot *tg.Bot, languageCode string, callBackQueryID string, chatID int64, messageID int, selected time.Time) {
 	log := that.logger.With("method", "handlerAlert2SelectedDate", "chat_id", chatID)
+
+	var callbackText string
+	defer func() {
+		_, _ = bot.AnswerCallbackQuery(ctx, &tg.AnswerCallbackQueryParams{
+			CallbackQueryID: callBackQueryID,
+			Text:            callbackText,
+			ShowAlert:       false,
+		})
+	}()
 
 	if err := that.chatsRepository.EnableAlert2(ctx, chatID, selected); err != nil {
 		log.Error("failed to create alert", "error", err)
 		return
 	}
 
-	text, err := that.renderLocaledMessage(languageCode, "createAlert2Message", "Date", selected.Format("02.01.2006"))
+	text, err := that.renderLocaledMessage(languageCode, "createAlert2Message")
 	if err != nil {
 		log.Error("failed to get localized text", "error", err)
 		return
@@ -124,6 +133,12 @@ func (that *Interaction) handlerAlert2SelectedDate(ctx context.Context, bot *tg.
 
 	if _, err = bot.EditMessageText(ctx, &tg.EditMessageTextParams{ChatID: chatID, MessageID: messageID, Text: text}); err != nil {
 		log.Error("failed to edit selected date message", "error", err)
+		return
+	}
+
+	callbackText, err = that.renderLocaledMessage(languageCode, "createAlert2CallbackMessage", "Date", selected.Format("02.01.2006"))
+	if err != nil {
+		log.Error("failed to get localized text", "error", err)
 		return
 	}
 }
