@@ -55,7 +55,7 @@ func (that *Repository) EnableAlert2(ctx context.Context, chatID int64, date tim
 func (that *Repository) FetchChatsWithBuyingPrices(ctx context.Context) ([]*model.TgChat, error) {
 	var chats []*model.TgChat
 
-	query := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("alert1_enabled = true OR alert2_enabled = true")
+	query := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("alert1 = true OR alert2 = true")
 	if err := query.Find(&chats).Error; err != nil {
 		return nil, fmt.Errorf("fetch chats with buying prices from database: %w", err)
 	}
