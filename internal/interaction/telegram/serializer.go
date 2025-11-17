@@ -69,7 +69,9 @@ func (that *Interaction) PricesWithGainToString(languageCode string, prices []*m
 		}
 
 		bp := weightLookup[p.Weight]
-		gain := p.SellPrice * 100 / bp.SellPrice
+
+		// Calculate gain in percents
+		gain := (p.SellPrice - bp.SellPrice) / bp.SellPrice * 100
 		sb.WriteString(fmt.Sprintf("%-8.4g %-12.2f %-12.2f %-12.2f\n", p.Weight, p.PurchasePrice, bp.SellPrice, gain))
 	}
 

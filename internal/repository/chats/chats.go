@@ -3,6 +3,8 @@ package chats
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"gorm.io/gorm"
@@ -68,7 +70,7 @@ func (that *Repository) FetchChatsWithBuyingPrices(ctx context.Context) ([]*mode
 	}
 
 	var prices []*model.GoldPrice
-	goldPricesQuery := that.db.WithContext(ctx).Model(&model.GoldPrice{}).Where("date IN (?)", datesToFetch)
+	goldPricesQuery := that.db.WithContext(ctx).Model(&model.GoldPrice{}).Where("date IN (?)", slices.Collect(maps.Keys(datesToFetch)))
 	if err := goldPricesQuery.Find(&prices).Error; err != nil {
 		return nil, fmt.Errorf("fetch prices from database: %w", err)
 	}

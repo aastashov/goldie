@@ -70,7 +70,7 @@ func (that *Interaction) Start(ctx context.Context) {
 }
 
 func (that *Interaction) SendMessage(ctx context.Context, chatID int64, text string) error {
-	_, err := that.TgBot.SendMessage(ctx, &tg.SendMessageParams{ChatID: chatID, Text: text})
+	_, err := that.TgBot.SendMessage(ctx, &tg.SendMessageParams{ChatID: chatID, Text: text, ParseMode: models.ParseModeHTML})
 	return err
 }
 

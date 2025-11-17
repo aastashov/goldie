@@ -61,7 +61,7 @@ func (that *AlertUseCase) Run(ctx context.Context) {
 	}
 
 	// Prepare localized texts for all languages
-	var localizedAlert1Lookup map[string]string
+	localizedAlert1Lookup := make(map[string]string)
 	for _, chat := range chats {
 		if !chat.Alert1Enabled {
 			continue
