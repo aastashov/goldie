@@ -13,7 +13,7 @@
   },
   {
     "id": "goldPricesTitle",
-    "translation": "Цены мерных слитков на ({{.Date}})"
+    "translation": "Цена на золото на ({{.Date}})"
   },
   {
     "id": "columnWeight",
