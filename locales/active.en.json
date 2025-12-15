@@ -65,7 +65,7 @@
   },
   {
     "id": "alertMessage",
-    "translation": "Please, select the alert you want to configure:\n/alert1 — send daily summaries of gold prices\n/alert2 — send daily summaries of how much i will earn if i sell today"
+    "translation": "Please, select the alert you want to configure:\n/alert1 — Send daily summaries of gold prices\n/alert2 — Send daily summaries of how much i will earn if i sell today"
   },
   {
     "id": "createAlert1Message",
