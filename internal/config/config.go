@@ -9,6 +9,8 @@ import (
 
 const DefaultLanguageCode = "en"
 
+var BuildVersion = "dev"
+
 type Config struct {
 	Database Database `yaml:"database"`
 	Telegram Telegram `yaml:"telegram"`

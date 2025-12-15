@@ -1,6 +1,8 @@
 # ===== Stage 1: Build =====
 FROM golang:1.24.7-alpine AS builder
 
+ARG BUILD_VERSION=dev
+
 WORKDIR /app
 
 RUN apk add --no-cache git ca-certificates tzdata curl build-base
@@ -10,7 +12,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o goldie .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X goldie/internal/config.BuildVersion=${BUILD_VERSION}" -o goldie .
 
 # ===== Stage 2: Runtime =====
 FROM alpine:3.20

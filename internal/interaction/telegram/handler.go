@@ -10,6 +10,7 @@ import (
 	tg "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
+	"goldie/internal/config"
 	"goldie/internal/model"
 )
 
@@ -243,7 +244,7 @@ func (that *Interaction) handlerInfo(ctx context.Context, bot *tg.Bot, update *m
 		return
 	}
 
-	text, err := that.renderLocaledMessage(languageCode, "infoMessage", "UserData", strings.Join(userDataLines, "\n"))
+	text, err := that.renderLocaledMessage(languageCode, "infoMessage", "UserData", strings.Join(userDataLines, "\n"), "buildVersion", config.BuildVersion)
 	if err != nil {
 		log.Error("failed to render info message", "error", err)
 		return

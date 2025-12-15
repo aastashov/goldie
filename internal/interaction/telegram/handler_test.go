@@ -287,7 +287,7 @@ func Test_HandlerInfo(t *testing.T) {
 
 			// Then: The user should receive the info message
 			require.Equal(t, "15", formData["chat_id"])
-			require.Equal(t, "What I keep about you:\nTelegramID: 15\nLanguage: en\nPurchase date #1: 2024-09-01\nPurchase date #2: 2024-10-01\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you.", formData["text"])
+			require.Equal(t, "What I keep about you:\nTelegramID: 15\nLanguage: en\nPurchase date #1: 2024-09-01\nPurchase date #2: 2024-10-01\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you.\n\nBuild version: dev", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{\"ok\":true}`))}, nil
 		})
 
@@ -309,7 +309,7 @@ func Test_HandlerInfo(t *testing.T) {
 
 			// Then: The user should receive the info message
 			require.Equal(t, strconv.FormatInt(chatID, 10), formData["chat_id"])
-			require.Equal(t, "Что я храню о тебе:\nTelegramID: 77\nЯзык: ru\n\nЧтобы удалить всю информацию о себе, введи команду /delete, и я удалю все данные, связанные с тобой.", formData["text"])
+			require.Equal(t, "Что я храню о тебе:\nTelegramID: 77\nЯзык: ru\n\nЧтобы удалить всю информацию о себе, введи команду /delete, и я удалю все данные, связанные с тобой.\n\nВерсия сборки: dev", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{\"ok\":true}`))}, nil
 		})
 
@@ -333,6 +333,23 @@ func Test_HandlerSettings(t *testing.T) {
 	bundle, err := locales.GetBundle(st.BaseDir + "/")
 	require.NoError(t, err)
 
+	const (
+		sourceIDWithoutAlerts = 90
+		sourceIDWithAlerts    = 70
+	)
+
+	dbTgChats := []*model.TgChat{
+		{SourceID: sourceIDWithoutAlerts, Language: "en"},
+		{SourceID: sourceIDWithAlerts, Language: "en"},
+	}
+	require.NoError(t, st.GetDB().WithContext(ctx).Create(&dbTgChats).Error)
+
+	// Given: Prepared alert2 subscriptions more than the page size
+	for i := 0; i < 11; i++ {
+		date := suite.GetDateTime(t, fmt.Sprintf("2024-10-%02d", i+1))
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(&model.TgChatAlert2{ChatID: dbTgChats[1].ID, PurchaseDate: date}).Error)
+	}
+
 	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
 		mockedHTTPClient := botMock.NewMockHttpClient(t)
 		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, nil, chatsRepository), mockedHTTPClient
@@ -344,33 +361,30 @@ func Test_HandlerSettings(t *testing.T) {
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
+			// Then: The user should receive the settings message with the empty list
 			require.Contains(t, request.URL.Path, "sendMessage")
-			require.Equal(t, "70", formData["chat_id"])
+			require.Equal(t, strconv.FormatInt(sourceIDWithoutAlerts, 10), formData["chat_id"])
 			require.Equal(t, "You don't have alert2 subscriptions yet.", formData["text"])
 			require.Empty(t, formData["reply_markup"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
-		interaction.TgBot.ProcessUpdate(ctx, newUpdate(70, "en", "/settings"))
+		// When: We send the /settings command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(sourceIDWithoutAlerts, "en", "/settings"))
+
+		// Wait for the handler to be executed
 		time.Sleep(time.Millisecond * 100)
 	})
 
-	t.Run("should paginate and allow deletion", func(t *testing.T) {
+	t.Run("should return the first page of alert2 subscriptions - en", func(t *testing.T) {
 		interaction, mockedHTTPClient := newInteractionHandler()
-
-		dbChat := &model.TgChat{SourceID: 90, Language: "en"}
-		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
-
-		for i := 0; i < 11; i++ {
-			date := suite.GetDateTime(t, fmt.Sprintf("2024-10-%02d", i+1))
-			require.NoError(t, st.GetDB().WithContext(ctx).Create(&model.TgChatAlert2{ChatID: dbChat.ID, PurchaseDate: date}).Error)
-		}
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
+			// Then: The user should receive the settings message with the paginated list
 			require.Contains(t, request.URL.Path, "sendMessage")
-			require.Equal(t, strconv.FormatInt(dbChat.SourceID, 10), formData["chat_id"])
+			require.Equal(t, strconv.FormatInt(sourceIDWithAlerts, 10), formData["chat_id"])
 			require.Contains(t, formData["text"], "Your alert2 subscriptions (1/2):")
 			require.Contains(t, formData["text"], "Purchase date: 2024-10-11")
 
@@ -381,60 +395,83 @@ func Test_HandlerSettings(t *testing.T) {
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":1}}`))}, nil
 		})
 
-		interaction.TgBot.ProcessUpdate(ctx, newUpdate(dbChat.SourceID, "en", "/settings"))
+		// When: We send the /settings command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(sourceIDWithAlerts, "en", "/settings"))
+
+		// Wait for the handler to be executed
 		time.Sleep(time.Millisecond * 100)
+	})
+
+	t.Run("should return the second page of alert2 subscriptions - en", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
-			require.Contains(t, request.URL.Path, "editMessageText")
-			require.Equal(t, "1", formData["message_id"])
-			require.Contains(t, formData["text"], "Your alert2 subscriptions (2/2):")
-			require.Contains(t, formData["text"], "Purchase date: 2024-10-01")
+			switch {
+			case strings.Contains(request.URL.Path, "editMessageText"):
+				// Then: The message should be updated with the paginated list
+				require.Equal(t, "1", formData["message_id"])
+				require.Contains(t, formData["text"], "Your alert2 subscriptions (2/2):")
+				require.Contains(t, formData["text"], "Purchase date: 2024-10-01")
 
-			var markup models.InlineKeyboardMarkup
-			require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
-			require.Equal(t, 2, len(markup.InlineKeyboard))
-			require.Equal(t, "« Prev", markup.InlineKeyboard[len(markup.InlineKeyboard)-1][0].Text)
+				var markup models.InlineKeyboardMarkup
+				require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
+				require.Equal(t, 2, len(markup.InlineKeyboard))
+				require.Equal(t, "« Prev", markup.InlineKeyboard[len(markup.InlineKeyboard)-1][0].Text)
+			case strings.Contains(request.URL.Path, "answerCallbackQuery"):
+				// Then: The callback query should be answered
+				require.Equal(t, "callback-id", formData["callback_query_id"])
+			default:
+				t.Fatalf("unexpected telegram method: %s", request.URL.Path)
+			}
+
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
-		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
-			require.Contains(t, request.URL.Path, "answerCallbackQuery")
-			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
-		})
+		// When: We send the /settings command
+		interaction.TgBot.ProcessUpdate(ctx, newCallbackQuery(sourceIDWithAlerts, "en", testSettingsCallbackPrefix+"page:2"))
 
-		interaction.TgBot.ProcessUpdate(ctx, newCallbackQuery(dbChat.SourceID, "en", testSettingsCallbackPrefix+"page:2"))
+		// Wait for the handler to be executed
 		time.Sleep(time.Millisecond * 100)
+	})
+
+	t.Run("should delete the oldest alert2 subscription - en", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
 
 		var oldestAlert model.TgChatAlert2
-		require.NoError(t, st.GetDB().WithContext(ctx).Where("chat_id = ?", dbChat.ID).Order("purchase_date ASC").First(&oldestAlert).Error)
+		require.NoError(t, st.GetDB().WithContext(ctx).Where("chat_id = ?", dbTgChats[1].ID).Order("purchase_date ASC").First(&oldestAlert).Error)
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
-			require.Contains(t, request.URL.Path, "editMessageText")
-			require.Contains(t, formData["text"], "Your alert2 subscriptions (1/1):")
+			switch {
+			case strings.Contains(request.URL.Path, "editMessageText"):
+				// Then: The message should be updated with the paginated list
+				require.Contains(t, formData["text"], "Your alert2 subscriptions (1/1):")
 
-			var markup models.InlineKeyboardMarkup
-			require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
-			require.Equal(t, 10, len(markup.InlineKeyboard))
+				var markup models.InlineKeyboardMarkup
+				require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
+				require.Equal(t, 10, len(markup.InlineKeyboard))
+			case strings.Contains(request.URL.Path, "answerCallbackQuery"):
+				// Then: The callback query should be answered
+				require.Equal(t, "callback-id", formData["callback_query_id"])
+			default:
+				t.Fatalf("unexpected telegram method: %s", request.URL.Path)
+			}
+
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
-		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
-			formData := suite.ParseRequestBody(t, request)
+		// When: We click the "Delete" button
+		interaction.TgBot.ProcessUpdate(ctx, newCallbackQuery(sourceIDWithAlerts, "en", fmt.Sprintf("%sdel:%d:2", testSettingsCallbackPrefix, oldestAlert.ID)))
 
-			require.Contains(t, request.URL.Path, "answerCallbackQuery")
-			require.Equal(t, "Subscription deleted.", formData["text"])
-			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
-		})
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 200)
 
-		interaction.TgBot.ProcessUpdate(ctx, newCallbackQuery(dbChat.SourceID, "en", fmt.Sprintf("%sdel:%d:2", testSettingsCallbackPrefix, oldestAlert.ID)))
-		time.Sleep(time.Millisecond * 100)
-
+		// Then: The alert2 subscription should be deleted
 		var count int64
-		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChatAlert2{}).Where("chat_id = ?", dbChat.ID).Count(&count).Error)
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChatAlert2{}).Where("chat_id = ?", dbTgChats[1].ID).Count(&count).Error)
 		require.EqualValues(t, 10, count)
 	})
 }

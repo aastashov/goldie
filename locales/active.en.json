@@ -69,7 +69,7 @@
   },
   {
     "id": "infoMessage",
-    "translation": "What I keep about you:\n{{.UserData}}\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you."
+    "translation": "What I keep about you:\n{{.UserData}}\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you.\n\nBuild version: {{.buildVersion}}"
   },
   {
     "id": "deleteMessage",
