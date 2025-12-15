@@ -36,6 +36,10 @@
     "translation": "Hello. This is Goldie, your assistant for buying and selling gold bars. The bot's main function is to monitor gold prices and calculate how much you'll earn if you sell it today.\n\nAvailable commands:\n/help - Commands information\n/start - Choose your language\n/price - Show current gold price\n/alert - Configure your alerts\n/info - Information on storing user data\n/settings - Alerts setting\n/stop - Stop bot"
   },
   {
+    "id": "stopMessage",
+    "translation": "Bot stopped, including your notifications.\nTo enable them press /start."
+  },
+  {
     "id": "command.start.description",
     "translation": "Choose your language"
   },

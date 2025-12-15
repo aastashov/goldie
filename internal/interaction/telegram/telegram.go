@@ -26,6 +26,7 @@ type PricesRepository interface {
 type ChatsRepository interface {
 	EnableAlert1(ctx context.Context, chatID int64) error
 	EnableAlert2(ctx context.Context, chatID int64, date time.Time) error
+	DisableAlerts(ctx context.Context, chatID int64) error
 	SetLanguage(ctx context.Context, chatID int64, language string) error
 	GetLanguage(ctx context.Context, chatID int64) (string, error)
 }
@@ -84,6 +85,7 @@ func NewInteraction(logger *slog.Logger, token string, client tg.HttpClient, bun
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/alert1", tg.MatchTypeExact, cnt.handlerAlert1)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/alert2", tg.MatchTypeExact, cnt.handlerAlert2)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/help", tg.MatchTypeExact, cnt.handlerHelp)
+	b.RegisterHandler(tg.HandlerTypeMessageText, "/stop", tg.MatchTypeExact, cnt.handlerStop)
 	b.RegisterHandler(tg.HandlerTypeCallbackQueryData, languageCallbackPrefix, tg.MatchTypePrefix, cnt.handlerLanguageSelection)
 	b.RegisterHandler(tg.HandlerTypeCallbackQueryData, calendar.Prefix, tg.MatchTypePrefix, cnt.handlerAlert2CalendarCallback)
 

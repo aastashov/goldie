@@ -55,6 +55,24 @@ func (that *Repository) EnableAlert2(ctx context.Context, chatID int64, date tim
 	return nil
 }
 
+// DisableAlerts disables all alerts for the chat.
+func (that *Repository) DisableAlerts(ctx context.Context, chatID int64) error {
+	query := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID)
+
+	result := query.Updates(map[string]interface{}{"alert1": false, "alert2": false, "alert2_date": time.Time{}, "updated_at": time.Now()})
+	if err := result.Error; err != nil {
+		return fmt.Errorf("update existing chat: %w", err)
+	}
+
+	if result.RowsAffected == 0 {
+		if err := query.Create(&model.TgChat{SourceID: chatID}).Error; err != nil {
+			return fmt.Errorf("create new chat: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // SetLanguage sets chat language.
 func (that *Repository) SetLanguage(ctx context.Context, chatID int64, language string) error {
 	query := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID)

@@ -199,3 +199,17 @@ func (that *Interaction) handlerHelp(ctx context.Context, bot *tg.Bot, update *m
 		return
 	}
 }
+
+func (that *Interaction) handlerStop(ctx context.Context, bot *tg.Bot, update *models.Update) {
+	log := that.logger.With("method", "handlerStop", "user_id", update.Message.From.ID)
+
+	if err := that.chatsRepository.DisableAlerts(ctx, update.Message.Chat.ID); err != nil {
+		log.Error("failed to disable alerts", "error", err)
+		return
+	}
+
+	if _, err := that.sendLocaledMessage(ctx, bot, update, "stopMessage"); err != nil {
+		log.Error("error sending message", "error", err)
+		return
+	}
+}

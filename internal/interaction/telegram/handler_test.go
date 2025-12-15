@@ -74,7 +74,7 @@ func Test_HandlerPrice(t *testing.T) {
 
 			// Then: The user should receive the prices
 			require.Equal(t, "1", formData["chat_id"])
-			require.Equal(t, "<b>Gold prices on (2024-10-01)</b>\n<pre>\nGram     Buy          Sell        \n1        12345.00     12588.00    \n</pre>", formData["text"])
+			require.Equal(t, "<b>Gold prices on (2024-10-01)</b>\n<pre>\nGram     Purchase     Sell        \n1        12345.00     12588.00    \n</pre>", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -93,7 +93,7 @@ func Test_HandlerPrice(t *testing.T) {
 
 			// Then: The user should receive the prices
 			require.Equal(t, "1", formData["chat_id"])
-			require.Equal(t, "<b>Цены мерных слитков на (2024-10-01)</b>\n<pre>\nГрамм    Покупка      Продажа     \n1        12345.00     12588.00    \n</pre>", formData["text"])
+			require.Equal(t, "<b>Цена на золото на (2024-10-01)</b>\n<pre>\nГрамм    Обратный выкуп Продажа     \n1        12345.00     12588.00    \n</pre>", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -173,6 +173,76 @@ func Test_HandlerAlert1(t *testing.T) {
 		require.NoError(t, st.GetDB().WithContext(ctx).Model(&updatedChat).Where("source_id = ?", dbChat.SourceID).First(&updatedChat).Error)
 
 		require.True(t, updatedChat.Alert1Enabled)
+	})
+}
+
+func Test_HandlerStop(t *testing.T) {
+	ctx, st := suite.New(t, suite.WithPostgres())
+
+	chatsRepository := chats.NewRepository(st.GetDB())
+	bundle, err := locales.GetBundle(st.BaseDir + "/")
+	require.NoError(t, err)
+
+	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
+		mockedHTTPClient := botMock.NewMockHttpClient(t)
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, nil, chatsRepository), mockedHTTPClient
+	}
+
+	t.Run("should disable alerts and reply in english", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		dbChat := &model.TgChat{SourceID: 50, Alert1Enabled: true, Alert2Enabled: true, Alert2Date: suite.GetDateTime(t, "2024-09-01")}
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the stop message
+			require.Equal(t, strconv.FormatInt(dbChat.SourceID, 10), formData["chat_id"])
+			require.Equal(t, "Bot stopped, including your notifications.\nTo enable them press /start.", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		// When: We send the /stop command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(dbChat.SourceID, "en", "/stop"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+
+		// Then: The chat should be updated and alerts should be disabled
+		var updatedChat model.TgChat
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&updatedChat).Where("source_id = ?", dbChat.SourceID).First(&updatedChat).Error)
+		require.False(t, updatedChat.Alert1Enabled)
+		require.False(t, updatedChat.Alert2Enabled)
+		require.True(t, updatedChat.Alert2Date.IsZero())
+	})
+
+	t.Run("should create chat if missing and reply in russian", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		const chatID int64 = 77
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the stop message
+			require.Equal(t, strconv.FormatInt(chatID, 10), formData["chat_id"])
+			require.Equal(t, "Бот остановлен, включая ваши уведомления.\nЧтобы включить их, нажмите /start.", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		// When: We send the /stop command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(chatID, "ru", "/stop"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+
+		// Then: The chat should be created and alerts should be disabled
+		var createdChat model.TgChat
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&createdChat).Where("source_id = ?", chatID).First(&createdChat).Error)
+		require.False(t, createdChat.Alert1Enabled)
+		require.False(t, createdChat.Alert2Enabled)
+		require.True(t, createdChat.Alert2Date.IsZero())
 	})
 }
 
