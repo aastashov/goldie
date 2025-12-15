@@ -1,6 +1,7 @@
 package telegram_test
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -31,9 +32,11 @@ func newUpdate(userID int64, languageCode string, text string) *models.Update {
 
 func newCallbackQuery(userID int64, languageCode string, data string) *models.Update {
 	return &models.Update{CallbackQuery: &models.CallbackQuery{
+		ID:   "callback-id",
 		Data: data,
 		Message: models.MaybeInaccessibleMessage{
 			Message: &models.Message{
+				ID:   1,
 				From: &models.User{ID: userID, LanguageCode: languageCode},
 				Chat: models.Chat{ID: userID},
 			},
@@ -45,6 +48,8 @@ func Test_HandlerPrice(t *testing.T) {
 	ctx, st := suite.New(t, suite.WithPostgres())
 
 	pricesRepository := prices.NewRepository(st.GetDB())
+	chatRepository := chats.NewRepository(st.GetDB())
+
 	bundle, err := locales.GetBundle(st.BaseDir + "/")
 	require.NoError(t, err)
 
@@ -58,7 +63,7 @@ func Test_HandlerPrice(t *testing.T) {
 
 	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
 		mockedHTTPClient := botMock.NewMockHttpClient(t)
-		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, pricesRepository, nil), mockedHTTPClient
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, pricesRepository, chatRepository), mockedHTTPClient
 	}
 
 	t.Run("should return prices for the user on the last available date - en", func(t *testing.T) {
@@ -175,6 +180,7 @@ func Test_HandlerAlert2(t *testing.T) {
 	ctx, st := suite.New(t, suite.WithPostgres())
 
 	pricesRepository := prices.NewRepository(st.GetDB())
+	chatRepository := chats.NewRepository(st.GetDB())
 
 	// Given: Prepared prices for the first year
 	dbPrices := []*model.GoldPrice{
@@ -187,7 +193,7 @@ func Test_HandlerAlert2(t *testing.T) {
 
 	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
 		mockedHTTPClient := botMock.NewMockHttpClient(t)
-		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, pricesRepository, nil), mockedHTTPClient
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, pricesRepository, chatRepository), mockedHTTPClient
 	}
 
 	const chatID = 2
@@ -231,6 +237,117 @@ func Test_HandlerAlert2(t *testing.T) {
 	})
 }
 
+func Test_HandlerStart(t *testing.T) {
+	ctx, st := suite.New(t, suite.WithPostgres())
+
+	chatsRepository := chats.NewRepository(st.GetDB())
+	bundle, err := locales.GetBundle(st.BaseDir + "/")
+	require.NoError(t, err)
+
+	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
+		mockedHTTPClient := botMock.NewMockHttpClient(t)
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, nil, chatsRepository), mockedHTTPClient
+	}
+
+	t.Run("should send language prompt with inline keyboard", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the language prompt with inline keyboard
+			require.Equal(t, "1", formData["chat_id"])
+			require.Equal(t, "Hello. This is Goldie, your assistant for buying and selling gold bars. Choose your language", formData["text"])
+
+			var markup models.InlineKeyboardMarkup
+			require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
+			require.Len(t, markup.InlineKeyboard, 1)
+			require.Len(t, markup.InlineKeyboard[0], 2)
+
+			require.Equal(t, "🇷🇺 Русский", markup.InlineKeyboard[0][0].Text)
+			require.Equal(t, "lang:ru", markup.InlineKeyboard[0][0].CallbackData)
+
+			require.Equal(t, "🇬🇧 English", markup.InlineKeyboard[0][1].Text)
+			require.Equal(t, "lang:en", markup.InlineKeyboard[0][1].CallbackData)
+
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		// When: We send the /start command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(1, "en", "/start"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+	})
+
+	t.Run("should save language and send help after selection", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			switch {
+			case strings.Contains(request.URL.Path, "editMessageText"):
+				// Then: The message should be updated with the help text
+				require.Equal(t, "1", formData["message_id"])
+				require.Equal(t, "Привет! Это Goldie, ваш помощник по покупке и продаже золотых слитков. Основная функция бота - следить за ценами на золото и рассчитывать, сколько вы заработаете, если продадите его сегодня.\n\nДоступные команды:\n/help - Информация о командах\n/start — Выберите язык\n/price — Показать текущую цену на золото\n/alert — Настроить новое оповещение\n/info - Информация о хранении данных пользователя\n/settings - Настройка оповещений\n/stop - Остановить бота", formData["text"])
+			case strings.Contains(request.URL.Path, "answerCallbackQuery"):
+				// Then: The callback query should be answered
+				require.Equal(t, "callback-id", formData["callback_query_id"])
+			default:
+				t.Fatalf("unexpected telegram method: %s", request.URL.Path)
+			}
+
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		// When: the user selects Russian language
+		interaction.TgBot.ProcessUpdate(ctx, newCallbackQuery(1, "en", "lang:ru"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 200)
+
+		// Then: the chat should be created and the language should be set
+		var chat model.TgChat
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&chat).Where("source_id = ?", 1).First(&chat).Error)
+		require.Equal(t, "ru", chat.Language)
+	})
+
+	t.Run("should send localized start if chat language exists", func(t *testing.T) {
+		const chatID int64 = 3
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(&model.TgChat{SourceID: chatID, Language: "ru"}).Error)
+
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the language prompt with inline keyboard
+			require.Equal(t, strconv.FormatInt(chatID, 10), formData["chat_id"])
+			require.Equal(t, "Привет. Это Goldie, твой помощник по покупке и продаже золотых слитков. Выбери язык", formData["text"])
+
+			var markup models.InlineKeyboardMarkup
+			require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
+			require.Len(t, markup.InlineKeyboard, 1)
+			require.Len(t, markup.InlineKeyboard[0], 2)
+
+			require.Equal(t, "🇷🇺 Русский", markup.InlineKeyboard[0][0].Text)
+			require.Equal(t, "lang:ru", markup.InlineKeyboard[0][0].CallbackData)
+
+			require.Equal(t, "🇬🇧 English", markup.InlineKeyboard[0][1].Text)
+			require.Equal(t, "lang:en", markup.InlineKeyboard[0][1].CallbackData)
+
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		// When: We send the /start command from the English chat but with the Russian language in database
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(chatID, "en", "/start"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 200)
+	})
+}
+
 func Test_handlerAlert2SelectedDate(t *testing.T) {
 	ctx, st := suite.New(t, suite.WithPostgres())
 
@@ -257,9 +374,18 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
-			// Then: The user should receive the alert2 message
-			require.Equal(t, strconv.FormatInt(1, 10), formData["chat_id"])
-			require.Equal(t, "Done. I'll send you an alert about how much I'll earn if you sell today at 10:00 AM (UTC +6)", formData["text"])
+			switch {
+			case strings.Contains(request.URL.Path, "editMessageText"):
+				// Then: The message should be updated with the alert2 text
+				require.Equal(t, "1", formData["message_id"])
+				require.Equal(t, "Done. I'll send you an alert about how much I'll earn if you sell today at 10:00 AM (UTC +6)", formData["text"])
+			case strings.Contains(request.URL.Path, "answerCallbackQuery"):
+				// Then: The callback query should be answered
+				require.Equal(t, "callback-id", formData["callback_query_id"])
+			default:
+				t.Fatalf("unexpected telegram method: %s", request.URL.Path)
+			}
+
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -283,9 +409,18 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
-			// Then: The user should receive the alert2 message
-			require.Equal(t, strconv.FormatInt(1, 10), formData["chat_id"])
-			require.Equal(t, "Готово. Буду слать уведомления о том, сколько ты заработаешь, если сегодня продашь в 10:00 AM (UTC +6)", formData["text"])
+			switch {
+			case strings.Contains(request.URL.Path, "editMessageText"):
+				// Then: The message should be updated with the alert2 text
+				require.Equal(t, "1", formData["message_id"])
+				require.Equal(t, "Готово. Буду слать уведомления о том, сколько ты заработаешь, если сегодня продашь в 10:00 AM (UTC +6)", formData["text"])
+			case strings.Contains(request.URL.Path, "answerCallbackQuery"):
+				// Then: The callback query should be answered
+				require.Equal(t, "callback-id", formData["callback_query_id"])
+			default:
+				t.Fatalf("unexpected telegram method: %s", request.URL.Path)
+			}
+
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -312,9 +447,18 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
-			// Then: The user should receive the alert2 message
-			require.Equal(t, strconv.FormatInt(dbChat.SourceID, 10), formData["chat_id"])
-			require.Equal(t, "Done. I'll send you an alert about how much I'll earn if you sell today at 10:00 AM (UTC +6)", formData["text"])
+			switch {
+			case strings.Contains(request.URL.Path, "editMessageText"):
+				// Then: The message should be updated with the alert2 text
+				require.Equal(t, "1", formData["message_id"])
+				require.Equal(t, "Done. I'll send you an alert about how much I'll earn if you sell today at 10:00 AM (UTC +6)", formData["text"])
+			case strings.Contains(request.URL.Path, "answerCallbackQuery"):
+				// Then: The callback query should be answered
+				require.Equal(t, "callback-id", formData["callback_query_id"])
+			default:
+				t.Fatalf("unexpected telegram method: %s", request.URL.Path)
+			}
+
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -341,9 +485,18 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
-			// Then: The user should receive the alert2 message
-			require.Equal(t, strconv.FormatInt(dbChat.SourceID, 10), formData["chat_id"])
-			require.Equal(t, "Готово. Буду слать уведомления о том, сколько ты заработаешь, если сегодня продашь в 10:00 AM (UTC +6)", formData["text"])
+			switch {
+			case strings.Contains(request.URL.Path, "editMessageText"):
+				// Then: The message should be updated with the alert2 text
+				require.Equal(t, "1", formData["message_id"])
+				require.Equal(t, "Готово. Буду слать уведомления о том, сколько ты заработаешь, если сегодня продашь в 10:00 AM (UTC +6)", formData["text"])
+			case strings.Contains(request.URL.Path, "answerCallbackQuery"):
+				// Then: The callback query should be answered
+				require.Equal(t, "callback-id", formData["callback_query_id"])
+			default:
+				t.Fatalf("unexpected telegram method: %s", request.URL.Path)
+			}
+
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -363,14 +516,16 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 }
 
 func Test_HandlerHelp(t *testing.T) {
-	ctx, st := suite.New(t)
+	ctx, st := suite.New(t, suite.WithPostgres())
+
+	chatRepository := chats.NewRepository(st.GetDB())
 
 	bundle, err := locales.GetBundle(st.BaseDir + "/")
 	require.NoError(t, err)
 
 	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
 		mockedHTTPClient := botMock.NewMockHttpClient(t)
-		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, nil, nil), mockedHTTPClient
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, nil, chatRepository), mockedHTTPClient
 	}
 
 	t.Run("should return help message - en", func(t *testing.T) {
@@ -381,7 +536,7 @@ func Test_HandlerHelp(t *testing.T) {
 
 			// Then: The user should receive the help message
 			require.Equal(t, "1", formData["chat_id"])
-			require.Equal(t, "/start — Choose your language\n/price — Show current gold price\n/alert — Configure your alerts", formData["text"])
+			require.Equal(t, "Hello. This is Goldie, your assistant for buying and selling gold bars. The bot's main function is to monitor gold prices and calculate how much you'll earn if you sell it today.\n\nAvailable commands:\n/help - Commands information\n/start - Choose your language\n/price - Show current gold price\n/alert - Configure your alerts\n/info - Information on storing user data\n/settings - Alerts setting\n/stop - Stop bot", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -400,7 +555,7 @@ func Test_HandlerHelp(t *testing.T) {
 
 			// Then: The user should receive the help message
 			require.Equal(t, "1", formData["chat_id"])
-			require.Equal(t, "/start — Выберите язык\n/price — Показать текущую цену мерных слитков\n/alert — Настроить свои предупреждения", formData["text"])
+			require.Equal(t, "Привет! Это Goldie, ваш помощник по покупке и продаже золотых слитков. Основная функция бота - следить за ценами на золото и рассчитывать, сколько вы заработаете, если продадите его сегодня.\n\nДоступные команды:\n/help - Информация о командах\n/start — Выберите язык\n/price — Показать текущую цену на золото\n/alert — Настроить новое оповещение\n/info - Информация о хранении данных пользователя\n/settings - Настройка оповещений\n/stop - Остановить бота", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 

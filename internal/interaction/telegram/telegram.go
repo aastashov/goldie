@@ -8,8 +8,10 @@ import (
 
 	tg "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	tgModels "github.com/go-telegram/bot/models"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 
+	"goldie/internal/config"
 	"goldie/internal/interaction/telegram/calendar"
 	"goldie/internal/model"
 )
@@ -24,6 +26,8 @@ type PricesRepository interface {
 type ChatsRepository interface {
 	EnableAlert1(ctx context.Context, chatID int64) error
 	EnableAlert2(ctx context.Context, chatID int64, date time.Time) error
+	SetLanguage(ctx context.Context, chatID int64, language string) error
+	GetLanguage(ctx context.Context, chatID int64) (string, error)
 }
 
 type Interaction struct {
@@ -33,14 +37,36 @@ type Interaction struct {
 	bundle           *i18n.Bundle
 	pricesRepository PricesRepository
 	chatsRepository  ChatsRepository
+	supportedLangs   map[string]struct{}
+}
+
+const languageCallbackPrefix = "lang:"
+
+var botCommandDefinitions = []struct {
+	command           string
+	descriptionLocale string
+}{
+	{command: "start", descriptionLocale: "command.start.description"},
+	{command: "price", descriptionLocale: "command.price.description"},
+	{command: "alert", descriptionLocale: "command.alert.description"},
+	{command: "help", descriptionLocale: "command.help.description"},
+	{command: "info", descriptionLocale: "command.info.description"},
+	{command: "settings", descriptionLocale: "command.settings.description"},
+	{command: "stop", descriptionLocale: "command.stop.description"},
 }
 
 func NewInteraction(logger *slog.Logger, token string, client tg.HttpClient, bundle *i18n.Bundle, pricesRepository PricesRepository, chatsRepository ChatsRepository) *Interaction {
+	supportedLangs := make(map[string]struct{})
+	for _, tag := range bundle.LanguageTags() {
+		supportedLangs[tag.String()] = struct{}{}
+	}
+
 	cnt := &Interaction{
 		logger:           logger.With("component", "telegram"),
 		bundle:           bundle,
 		pricesRepository: pricesRepository,
 		chatsRepository:  chatsRepository,
+		supportedLangs:   supportedLangs,
 	}
 
 	opts := []tg.Option{
@@ -58,6 +84,7 @@ func NewInteraction(logger *slog.Logger, token string, client tg.HttpClient, bun
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/alert1", tg.MatchTypeExact, cnt.handlerAlert1)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/alert2", tg.MatchTypeExact, cnt.handlerAlert2)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/help", tg.MatchTypeExact, cnt.handlerHelp)
+	b.RegisterHandler(tg.HandlerTypeCallbackQueryData, languageCallbackPrefix, tg.MatchTypePrefix, cnt.handlerLanguageSelection)
 	b.RegisterHandler(tg.HandlerTypeCallbackQueryData, calendar.Prefix, tg.MatchTypePrefix, cnt.handlerAlert2CalendarCallback)
 
 	cnt.TgBot = b
@@ -66,6 +93,7 @@ func NewInteraction(logger *slog.Logger, token string, client tg.HttpClient, bun
 }
 
 func (that *Interaction) Start(ctx context.Context) {
+	that.setMyCommands(ctx)
 	that.TgBot.Start(ctx)
 }
 
@@ -79,13 +107,17 @@ func (that *Interaction) handler(_ context.Context, _ *tg.Bot, update *models.Up
 	log.Info("handling message", "update", update)
 }
 
-// getLocalizer returns a localizer for the user.
-func (that *Interaction) getLocalizer(languageCode string) *i18n.Localizer {
-	if languageCode == "" {
-		languageCode = "en"
+func (that *Interaction) getLanguageCode(ctx context.Context, chat tgModels.Chat, from *tgModels.User) string {
+	language, _ := that.chatsRepository.GetLanguage(ctx, chat.ID)
+	if language != "" {
+		return language
 	}
 
-	return i18n.NewLocalizer(that.bundle, languageCode)
+	if from.LanguageCode != "" {
+		return from.LanguageCode
+	}
+
+	return config.DefaultLanguageCode
 }
 
 // renderLocaledMessage renders a localized message.
@@ -99,7 +131,7 @@ func (that *Interaction) renderLocaledMessage(languageCode string, messageID str
 		templateData[args[i]] = args[i+1]
 	}
 
-	text, err := that.getLocalizer(languageCode).Localize(&i18n.LocalizeConfig{MessageID: messageID, TemplateData: templateData})
+	text, err := i18n.NewLocalizer(that.bundle, languageCode).Localize(&i18n.LocalizeConfig{MessageID: messageID, TemplateData: templateData})
 	if err != nil {
 		return "", fmt.Errorf("localize message: %w", err)
 	}
@@ -109,7 +141,7 @@ func (that *Interaction) renderLocaledMessage(languageCode string, messageID str
 
 // sendLocaledMessage sends a localized message to the user.
 func (that *Interaction) sendLocaledMessage(ctx context.Context, bot *tg.Bot, update *models.Update, messageID string, args ...string) (*models.Message, error) {
-	languageCode := update.Message.From.LanguageCode
+	languageCode := that.getLanguageCode(ctx, update.Message.Chat, update.Message.From)
 
 	text, err := that.renderLocaledMessage(languageCode, messageID, args...)
 	if err != nil {
@@ -122,4 +154,48 @@ func (that *Interaction) sendLocaledMessage(ctx context.Context, bot *tg.Bot, up
 	}
 
 	return msg, nil
+}
+
+func (that *Interaction) setMyCommands(ctx context.Context) {
+	log := that.logger.With("method", "setMyCommands")
+	var defaultCommands []models.BotCommand
+
+	for _, tag := range that.bundle.LanguageTags() {
+		languageCode := tag.String()
+		log = log.With("language", languageCode)
+
+		localizedCommands := make([]models.BotCommand, 0, len(botCommandDefinitions))
+		for _, definition := range botCommandDefinitions {
+			log = log.With("tg.command", definition.command)
+
+			description, err := that.renderLocaledMessage(languageCode, definition.descriptionLocale)
+			if err != nil {
+				log.Error("failed to render command description", "error", err)
+				continue
+			}
+
+			localizedCommands = append(localizedCommands, models.BotCommand{Command: definition.command, Description: description})
+		}
+
+		if len(localizedCommands) == 0 {
+			continue
+		}
+
+		if _, err := that.TgBot.SetMyCommands(ctx, &tg.SetMyCommandsParams{Commands: localizedCommands, LanguageCode: languageCode}); err != nil {
+			log.Error("failed to set bot commands", "error", err)
+			continue
+		}
+
+		if languageCode == config.DefaultLanguageCode {
+			defaultCommands = localizedCommands
+		}
+	}
+
+	if len(defaultCommands) == 0 {
+		return
+	}
+
+	if _, err := that.TgBot.SetMyCommands(ctx, &tg.SetMyCommandsParams{Commands: defaultCommands}); err != nil {
+		log.Error("failed to set default bot commands", "error", err)
+	}
 }

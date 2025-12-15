@@ -67,13 +67,8 @@ func (that *AlertUseCase) Run(ctx context.Context) {
 			continue
 		}
 
-		languageCode := chat.Language
-		if languageCode == "" {
-			languageCode = "en"
-		}
-
-		_, exists := localizedAlert1Lookup[languageCode]
-		if !exists {
+		languageCode := chat.GetLanguageCode()
+		if _, exists := localizedAlert1Lookup[languageCode]; !exists {
 			localizedAlert1Lookup[languageCode] = that.tgIntegration.PricesToString(languageCode, prices)
 		}
 	}
@@ -84,24 +79,14 @@ func (that *AlertUseCase) Run(ctx context.Context) {
 	for _, chat := range chats {
 		parallelSend.Go(func() error {
 			if chat.Alert1Enabled {
-				textForAlert1 := localizedAlert1Lookup[chat.Language]
-				if textForAlert1 == "" {
-					textForAlert1 = localizedAlert1Lookup["en"]
-				}
-
-				if err = that.tgIntegration.SendMessage(parallelSendCtx, chat.SourceID, textForAlert1); err != nil {
+				if err = that.tgIntegration.SendMessage(parallelSendCtx, chat.SourceID, localizedAlert1Lookup[chat.GetLanguageCode()]); err != nil {
 					log.Error("failed to send alert1", "error", err, "chat_id", chat.SourceID)
 					return nil
 				}
 			}
 
 			if chat.Alert2Enabled && len(chat.BuyingPrices) > 0 {
-				languageCode := chat.Language
-				if languageCode == "" {
-					languageCode = "en"
-				}
-
-				textForAlert2 := that.tgIntegration.PricesWithGainToString(languageCode, prices, chat.BuyingPrices)
+				textForAlert2 := that.tgIntegration.PricesWithGainToString(chat.GetLanguageCode(), prices, chat.BuyingPrices)
 				if err = that.tgIntegration.SendMessage(parallelSendCtx, chat.SourceID, textForAlert2); err != nil {
 					log.Error("failed to send alert2", "error", err, "chat_id", chat.SourceID)
 					return nil

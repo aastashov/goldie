@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"goldie/internal/config"
+)
 
 // TgChat - represents a Telegram chat.
 type TgChat struct {
@@ -17,4 +21,12 @@ type TgChat struct {
 
 func (*TgChat) TableName() string {
 	return "tg_chats"
+}
+
+func (that *TgChat) GetLanguageCode() string {
+	if that.Language != "" {
+		return that.Language
+	}
+
+	return config.DefaultLanguageCode
 }

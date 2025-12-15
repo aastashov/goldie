@@ -7,6 +7,8 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
+const DefaultLanguageCode = "en"
+
 type Config struct {
 	Database Database `yaml:"database"`
 	Telegram Telegram `yaml:"telegram"`

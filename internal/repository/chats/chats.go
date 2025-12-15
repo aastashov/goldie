@@ -2,6 +2,7 @@ package chats
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -52,6 +53,40 @@ func (that *Repository) EnableAlert2(ctx context.Context, chatID int64, date tim
 	}
 
 	return nil
+}
+
+// SetLanguage sets chat language.
+func (that *Repository) SetLanguage(ctx context.Context, chatID int64, language string) error {
+	query := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID)
+
+	result := query.Updates(map[string]interface{}{"language": language, "updated_at": time.Now()})
+	if err := result.Error; err != nil {
+		return fmt.Errorf("update existing chat language: %w", err)
+	}
+
+	if result.RowsAffected == 0 {
+		if err := query.Create(&model.TgChat{SourceID: chatID, Language: language}).Error; err != nil {
+			return fmt.Errorf("create new chat with language: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// GetLanguage returns chat language.
+func (that *Repository) GetLanguage(ctx context.Context, chatID int64) (string, error) {
+	var chat model.TgChat
+
+	err := that.db.WithContext(ctx).Model(&model.TgChat{}).Select("language").Where("source_id = ?", chatID).First(&chat).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil
+		}
+
+		return "", fmt.Errorf("get chat language: %w", err)
+	}
+
+	return chat.Language, nil
 }
 
 func (that *Repository) FetchChatsWithBuyingPrices(ctx context.Context) ([]*model.TgChat, error) {

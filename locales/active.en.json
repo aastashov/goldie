@@ -1,7 +1,7 @@
 [
   {
     "id": "startWelcomeMessage",
-    "translation": "Hello. This is Goldie, your assistant for buying and selling gold bars. Please select the functionality you need.\n\n/price — Show current gold price\n/alert — Configure your alerts"
+    "translation": "Hello. This is Goldie, your assistant for buying and selling gold bars. Choose your language"
   },
   {
     "id": "greet",
@@ -33,7 +33,35 @@
   },
   {
     "id": "helpMessage",
-    "translation": "/start — Choose your language\n/price — Show current gold price\n/alert — Configure your alerts"
+    "translation": "Hello. This is Goldie, your assistant for buying and selling gold bars. The bot's main function is to monitor gold prices and calculate how much you'll earn if you sell it today.\n\nAvailable commands:\n/help - Commands information\n/start - Choose your language\n/price - Show current gold price\n/alert - Configure your alerts\n/info - Information on storing user data\n/settings - Alerts setting\n/stop - Stop bot"
+  },
+  {
+    "id": "command.start.description",
+    "translation": "Choose your language"
+  },
+  {
+    "id": "command.price.description",
+    "translation": "Show current gold price"
+  },
+  {
+    "id": "command.alert.description",
+    "translation": "Configure your alerts"
+  },
+  {
+    "id": "command.help.description",
+    "translation": "Commands information"
+  },
+  {
+    "id": "command.info.description",
+    "translation": "Information on storing user data"
+  },
+  {
+    "id": "command.settings.description",
+    "translation": "Alerts setting"
+  },
+  {
+    "id": "command.stop.description",
+    "translation": "Stop bot"
   },
   {
     "id": "alertMessage",
