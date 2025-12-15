@@ -2,11 +2,14 @@ package telegram
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
 	tg "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+
+	"goldie/internal/model"
 )
 
 func (that *Interaction) handlerStart(ctx context.Context, bot *tg.Bot, update *models.Update) {
@@ -212,4 +215,87 @@ func (that *Interaction) handlerStop(ctx context.Context, bot *tg.Bot, update *m
 		log.Error("error sending message", "error", err)
 		return
 	}
+}
+
+func (that *Interaction) handlerInfo(ctx context.Context, bot *tg.Bot, update *models.Update) {
+	log := that.logger.With("method", "handlerInfo", "user_id", update.Message.From.ID)
+
+	chat, err := that.chatsRepository.GetChat(ctx, update.Message.Chat.ID)
+	if err != nil {
+		log.Error("failed to get chat", "error", err)
+		return
+	}
+
+	languageCode := that.getLanguageCode(ctx, update.Message.Chat, update.Message.From)
+
+	userDataLines, err := that.buildUserDataLines(languageCode, update, chat)
+	if err != nil {
+		log.Error("failed to build user data lines", "error", err)
+		return
+	}
+
+	text, err := that.renderLocaledMessage(languageCode, "infoMessage", "UserData", strings.Join(userDataLines, "\n"))
+	if err != nil {
+		log.Error("failed to render info message", "error", err)
+		return
+	}
+
+	if _, err = bot.SendMessage(ctx, &tg.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text}); err != nil {
+		log.Error("failed to send info message", "error", err)
+		return
+	}
+}
+
+func (that *Interaction) handlerDelete(ctx context.Context, bot *tg.Bot, update *models.Update) {
+	log := that.logger.With("method", "handlerDelete", "user_id", update.Message.From.ID)
+
+	languageCode := that.getLanguageCode(ctx, update.Message.Chat, update.Message.From)
+
+	if err := that.chatsRepository.DeleteChat(ctx, update.Message.Chat.ID); err != nil {
+		log.Error("failed to delete chat data", "error", err)
+		return
+	}
+
+	text, err := that.renderLocaledMessage(languageCode, "deleteMessage")
+	if err != nil {
+		log.Error("failed to render delete message", "error", err)
+		return
+	}
+
+	if _, err = bot.SendMessage(ctx, &tg.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text}); err != nil {
+		log.Error("failed to send delete message", "error", err)
+		return
+	}
+}
+
+func (that *Interaction) buildUserDataLines(languageCode string, update *models.Update, chat *model.TgChat) ([]string, error) {
+	lines := make([]string, 0, 3)
+
+	telegramIDLabel, err := that.renderLocaledMessage(languageCode, "userData.telegramID")
+	if err != nil {
+		return nil, err
+	}
+	lines = append(lines, telegramIDLabel+": "+strconv.FormatInt(update.Message.Chat.ID, 10))
+
+	languageLabel, err := that.renderLocaledMessage(languageCode, "userData.language")
+	if err != nil {
+		return nil, err
+	}
+	languageValue := languageCode
+	if chat != nil && chat.Language != "" {
+		languageValue = chat.Language
+	} else if update.Message.From.LanguageCode != "" {
+		languageValue = update.Message.From.LanguageCode
+	}
+	lines = append(lines, languageLabel+": "+languageValue)
+
+	if chat != nil && !chat.Alert2Date.IsZero() {
+		purchaseDateLabel, err := that.renderLocaledMessage(languageCode, "userData.purchaseDate")
+		if err != nil {
+			return nil, err
+		}
+		lines = append(lines, purchaseDateLabel+": "+chat.Alert2Date.Format("2006-01-02"))
+	}
+
+	return lines, nil
 }

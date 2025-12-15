@@ -37,7 +37,27 @@
   },
   {
     "id": "stopMessage",
-    "translation": "Бот остановлен, включая ваши уведомления.\nЧтобы включить их, нажмите /start."
+    "translation": "Бот остановлен, включая ваши уведомления.\nЧтобы включить их, нажмите /alert."
+  },
+  {
+    "id": "infoMessage",
+    "translation": "Что я храню о тебе:\n{{.UserData}}\n\nЧтобы удалить всю информацию о себе, введи команду /delete, и я удалю все данные, связанные с тобой."
+  },
+  {
+    "id": "deleteMessage",
+    "translation": "Я забыл все о тебе."
+  },
+  {
+    "id": "userData.telegramID",
+    "translation": "TelegramID"
+  },
+  {
+    "id": "userData.language",
+    "translation": "Язык"
+  },
+  {
+    "id": "userData.purchaseDate",
+    "translation": "Дата покупки"
   },
   {
     "id": "command.start.description",
@@ -58,6 +78,10 @@
   {
     "id": "command.info.description",
     "translation": "Информация о хранении данных пользователя"
+  },
+  {
+    "id": "command.delete.description",
+    "translation": "Удалить данные о себе"
   },
   {
     "id": "command.settings.description",

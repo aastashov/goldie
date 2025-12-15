@@ -199,7 +199,7 @@ func Test_HandlerStop(t *testing.T) {
 
 			// Then: The user should receive the stop message
 			require.Equal(t, strconv.FormatInt(dbChat.SourceID, 10), formData["chat_id"])
-			require.Equal(t, "Bot stopped, including your notifications.\nTo enable them press /start.", formData["text"])
+			require.Equal(t, "Bot stopped, including your notifications.\nTo enable them press /alert.", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -227,7 +227,7 @@ func Test_HandlerStop(t *testing.T) {
 
 			// Then: The user should receive the stop message
 			require.Equal(t, strconv.FormatInt(chatID, 10), formData["chat_id"])
-			require.Equal(t, "Бот остановлен, включая ваши уведомления.\nЧтобы включить их, нажмите /start.", formData["text"])
+			require.Equal(t, "Бот остановлен, включая ваши уведомления.\nЧтобы включить их, нажмите /alert.", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})
 
@@ -243,6 +243,137 @@ func Test_HandlerStop(t *testing.T) {
 		require.False(t, createdChat.Alert1Enabled)
 		require.False(t, createdChat.Alert2Enabled)
 		require.True(t, createdChat.Alert2Date.IsZero())
+	})
+}
+
+func Test_HandlerInfo(t *testing.T) {
+	ctx, st := suite.New(t, suite.WithPostgres())
+
+	chatsRepository := chats.NewRepository(st.GetDB())
+	bundle, err := locales.GetBundle(st.BaseDir + "/")
+	require.NoError(t, err)
+
+	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
+		mockedHTTPClient := botMock.NewMockHttpClient(t)
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, nil, chatsRepository), mockedHTTPClient
+	}
+
+	t.Run("should show stored data - en", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		// Given: Prepared chat
+		dbChat := &model.TgChat{SourceID: 15, Language: "en", Alert2Enabled: true, Alert2Date: suite.GetDateTime(t, "2024-10-01")}
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the info message
+			require.Equal(t, "15", formData["chat_id"])
+			require.Equal(t, "What I keep about you:\nTelegramID: 15\nLanguage: en\nPurchase date: 2024-10-01\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you.", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{\"ok\":true}`))}, nil
+		})
+
+		// When: We send the /info command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(dbChat.SourceID, "en", "/info"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+	})
+
+	t.Run("should show default data when chat missing - ru", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		// Given: Prepared non-existing chat
+		const chatID int64 = 77
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the info message
+			require.Equal(t, strconv.FormatInt(chatID, 10), formData["chat_id"])
+			require.Equal(t, "Что я храню о тебе:\nTelegramID: 77\nЯзык: ru\n\nЧтобы удалить всю информацию о себе, введи команду /delete, и я удалю все данные, связанные с тобой.", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{\"ok\":true}`))}, nil
+		})
+
+		// When: We send the /info command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(chatID, "ru", "/info"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+
+		// Then: The chat should be created
+		var count int64
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID).Count(&count).Error)
+		require.EqualValues(t, 0, count)
+	})
+}
+
+func Test_HandlerDelete(t *testing.T) {
+	ctx, st := suite.New(t, suite.WithPostgres())
+
+	chatsRepository := chats.NewRepository(st.GetDB())
+	bundle, err := locales.GetBundle(st.BaseDir + "/")
+	require.NoError(t, err)
+
+	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
+		mockedHTTPClient := botMock.NewMockHttpClient(t)
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, nil, chatsRepository), mockedHTTPClient
+	}
+
+	t.Run("should delete chat and respond - en", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		// Given: Prepared chat
+		dbChat := &model.TgChat{SourceID: 22, Language: "en"}
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the delete message
+			require.Equal(t, "22", formData["chat_id"])
+			require.Equal(t, "We forgot about you.", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{\"ok\":true}`))}, nil
+		})
+
+		// When: We send the /delete command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(dbChat.SourceID, "en", "/delete"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+
+		// Then: The chat should be deleted
+		var count int64
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", dbChat.SourceID).Count(&count).Error)
+		require.EqualValues(t, 0, count)
+	})
+
+	t.Run("should respond even if chat absent - ru", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		// Given: Prepared non-existing chat
+		const chatID int64 = 88
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			// Then: The user should receive the delete message
+			require.Equal(t, strconv.FormatInt(chatID, 10), formData["chat_id"])
+			require.Equal(t, "Я забыл все о тебе.", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{\"ok\":true}`))}, nil
+		})
+
+		// When: We send the /delete command
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(chatID, "ru", "/delete"))
+
+		// Wait for the handler to be executed
+		time.Sleep(time.Millisecond * 100)
+
+		// Then: The chat should be deleted
+		var count int64
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID).Count(&count).Error)
+		require.EqualValues(t, 0, count)
 	})
 }
 

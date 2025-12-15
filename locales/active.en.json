@@ -37,7 +37,27 @@
   },
   {
     "id": "stopMessage",
-    "translation": "Bot stopped, including your notifications.\nTo enable them press /start."
+    "translation": "Bot stopped, including your notifications.\nTo enable them press /alert."
+  },
+  {
+    "id": "infoMessage",
+    "translation": "What I keep about you:\n{{.UserData}}\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you."
+  },
+  {
+    "id": "deleteMessage",
+    "translation": "We forgot about you."
+  },
+  {
+    "id": "userData.telegramID",
+    "translation": "TelegramID"
+  },
+  {
+    "id": "userData.language",
+    "translation": "Language"
+  },
+  {
+    "id": "userData.purchaseDate",
+    "translation": "Purchase date"
   },
   {
     "id": "command.start.description",
@@ -58,6 +78,10 @@
   {
     "id": "command.info.description",
     "translation": "Information on storing user data"
+  },
+  {
+    "id": "command.delete.description",
+    "translation": "Delete stored personal data"
   },
   {
     "id": "command.settings.description",

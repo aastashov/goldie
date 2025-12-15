@@ -73,6 +73,17 @@ func (that *Repository) DisableAlerts(ctx context.Context, chatID int64) error {
 	return nil
 }
 
+// DeleteChat removes chat record and any stored data.
+func (that *Repository) DeleteChat(ctx context.Context, chatID int64) error {
+	query := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID)
+
+	if err := query.Delete(&model.TgChat{}).Error; err != nil {
+		return fmt.Errorf("delete chat: %w", err)
+	}
+
+	return nil
+}
+
 // SetLanguage sets chat language.
 func (that *Repository) SetLanguage(ctx context.Context, chatID int64, language string) error {
 	query := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID)
@@ -105,6 +116,22 @@ func (that *Repository) GetLanguage(ctx context.Context, chatID int64) (string, 
 	}
 
 	return chat.Language, nil
+}
+
+// GetChat returns chat entity if exists.
+func (that *Repository) GetChat(ctx context.Context, chatID int64) (*model.TgChat, error) {
+	var chat model.TgChat
+
+	err := that.db.WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID).First(&chat).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("get chat: %w", err)
+	}
+
+	return &chat, nil
 }
 
 func (that *Repository) FetchChatsWithBuyingPrices(ctx context.Context) ([]*model.TgChat, error) {
