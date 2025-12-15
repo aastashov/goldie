@@ -40,6 +40,34 @@
     "translation": "Бот остановлен, включая ваши уведомления.\nЧтобы включить их, нажмите /alert."
   },
   {
+    "id": "settingsAlert2Empty",
+    "translation": "У тебя пока нет подписок alert2."
+  },
+  {
+    "id": "settingsAlert2Title",
+    "translation": "Твои подписки alert2 ({{.CurrentPage}}/{{.TotalPages}}):"
+  },
+  {
+    "id": "settingsAlert2Item",
+    "translation": "{{.Index}}. Дата покупки: {{.Date}}"
+  },
+  {
+    "id": "settingsAlert2DeleteButton",
+    "translation": "Удалить"
+  },
+  {
+    "id": "settingsAlert2PrevPage",
+    "translation": "« Назад"
+  },
+  {
+    "id": "settingsAlert2NextPage",
+    "translation": "Вперед »"
+  },
+  {
+    "id": "settingsAlert2DeleteSuccess",
+    "translation": "Подписка удалена."
+  },
+  {
     "id": "infoMessage",
     "translation": "Что я храню о тебе:\n{{.UserData}}\n\nЧтобы удалить всю информацию о себе, введи команду /delete, и я удалю все данные, связанные с тобой."
   },

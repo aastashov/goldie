@@ -40,6 +40,34 @@
     "translation": "Bot stopped, including your notifications.\nTo enable them press /alert."
   },
   {
+    "id": "settingsAlert2Empty",
+    "translation": "You don't have alert2 subscriptions yet."
+  },
+  {
+    "id": "settingsAlert2Title",
+    "translation": "Your alert2 subscriptions ({{.CurrentPage}}/{{.TotalPages}}):"
+  },
+  {
+    "id": "settingsAlert2Item",
+    "translation": "{{.Index}}. Purchase date: {{.Date}}"
+  },
+  {
+    "id": "settingsAlert2DeleteButton",
+    "translation": "Delete"
+  },
+  {
+    "id": "settingsAlert2PrevPage",
+    "translation": "« Prev"
+  },
+  {
+    "id": "settingsAlert2NextPage",
+    "translation": "Next »"
+  },
+  {
+    "id": "settingsAlert2DeleteSuccess",
+    "translation": "Subscription deleted."
+  },
+  {
     "id": "infoMessage",
     "translation": "What I keep about you:\n{{.UserData}}\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you."
   },

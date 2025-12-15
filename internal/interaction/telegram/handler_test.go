@@ -2,6 +2,7 @@ package telegram_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -21,6 +22,8 @@ import (
 	botMock "goldie/mocks/bot"
 	"goldie/testing/suite"
 )
+
+const testSettingsCallbackPrefix = "settings:"
 
 func newUpdate(userID int64, languageCode string, text string) *models.Update {
 	return &models.Update{Message: &models.Message{
@@ -191,8 +194,9 @@ func Test_HandlerStop(t *testing.T) {
 	t.Run("should disable alerts and reply in english", func(t *testing.T) {
 		interaction, mockedHTTPClient := newInteractionHandler()
 
-		dbChat := &model.TgChat{SourceID: 50, Alert1Enabled: true, Alert2Enabled: true, Alert2Date: suite.GetDateTime(t, "2024-09-01")}
+		dbChat := &model.TgChat{SourceID: 50, Alert1Enabled: true}
 		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(&model.TgChatAlert2{ChatID: dbChat.ID, PurchaseDate: suite.GetDateTime(t, "2024-09-01")}).Error)
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
@@ -213,8 +217,10 @@ func Test_HandlerStop(t *testing.T) {
 		var updatedChat model.TgChat
 		require.NoError(t, st.GetDB().WithContext(ctx).Model(&updatedChat).Where("source_id = ?", dbChat.SourceID).First(&updatedChat).Error)
 		require.False(t, updatedChat.Alert1Enabled)
-		require.False(t, updatedChat.Alert2Enabled)
-		require.True(t, updatedChat.Alert2Date.IsZero())
+
+		var alert2Count int64
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChatAlert2{}).Where("chat_id = ?", updatedChat.ID).Count(&alert2Count).Error)
+		require.EqualValues(t, 0, alert2Count)
 	})
 
 	t.Run("should create chat if missing and reply in russian", func(t *testing.T) {
@@ -241,8 +247,13 @@ func Test_HandlerStop(t *testing.T) {
 		var createdChat model.TgChat
 		require.NoError(t, st.GetDB().WithContext(ctx).Model(&createdChat).Where("source_id = ?", chatID).First(&createdChat).Error)
 		require.False(t, createdChat.Alert1Enabled)
-		require.False(t, createdChat.Alert2Enabled)
-		require.True(t, createdChat.Alert2Date.IsZero())
+
+		var alert2Count int64
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChatAlert2{}).
+			Joins("JOIN tg_chats ON tg_chats.id = tg_chat_alert2.chat_id").
+			Where("tg_chats.source_id = ?", chatID).
+			Count(&alert2Count).Error)
+		require.EqualValues(t, 0, alert2Count)
 	})
 }
 
@@ -262,15 +273,21 @@ func Test_HandlerInfo(t *testing.T) {
 		interaction, mockedHTTPClient := newInteractionHandler()
 
 		// Given: Prepared chat
-		dbChat := &model.TgChat{SourceID: 15, Language: "en", Alert2Enabled: true, Alert2Date: suite.GetDateTime(t, "2024-10-01")}
+		dbChat := &model.TgChat{SourceID: 15, Language: "en"}
 		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+
+		dbAlerts2 := []*model.TgChatAlert2{
+			{ChatID: dbChat.ID, PurchaseDate: suite.GetDateTime(t, "2024-10-01")},
+			{ChatID: dbChat.ID, PurchaseDate: suite.GetDateTime(t, "2024-09-01")},
+		}
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(&dbAlerts2).Error)
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
 
 			// Then: The user should receive the info message
 			require.Equal(t, "15", formData["chat_id"])
-			require.Equal(t, "What I keep about you:\nTelegramID: 15\nLanguage: en\nPurchase date: 2024-10-01\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you.", formData["text"])
+			require.Equal(t, "What I keep about you:\nTelegramID: 15\nLanguage: en\nPurchase date #1: 2024-09-01\nPurchase date #2: 2024-10-01\n\nTo delete all information about you, enter the /delete command and I will clean up all the data related to you.", formData["text"])
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{\"ok\":true}`))}, nil
 		})
 
@@ -309,6 +326,119 @@ func Test_HandlerInfo(t *testing.T) {
 	})
 }
 
+func Test_HandlerSettings(t *testing.T) {
+	ctx, st := suite.New(t, suite.WithPostgres())
+
+	chatsRepository := chats.NewRepository(st.GetDB())
+	bundle, err := locales.GetBundle(st.BaseDir + "/")
+	require.NoError(t, err)
+
+	newInteractionHandler := func() (*telegram.Interaction, *botMock.MockHttpClient) {
+		mockedHTTPClient := botMock.NewMockHttpClient(t)
+		return telegram.NewInteraction(st.Logger, "token", mockedHTTPClient, bundle, nil, chatsRepository), mockedHTTPClient
+	}
+
+	t.Run("should show empty list when no alert2 subscriptions", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			require.Contains(t, request.URL.Path, "sendMessage")
+			require.Equal(t, "70", formData["chat_id"])
+			require.Equal(t, "You don't have alert2 subscriptions yet.", formData["text"])
+			require.Empty(t, formData["reply_markup"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(70, "en", "/settings"))
+		time.Sleep(time.Millisecond * 100)
+	})
+
+	t.Run("should paginate and allow deletion", func(t *testing.T) {
+		interaction, mockedHTTPClient := newInteractionHandler()
+
+		dbChat := &model.TgChat{SourceID: 90, Language: "en"}
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+
+		for i := 0; i < 11; i++ {
+			date := suite.GetDateTime(t, fmt.Sprintf("2024-10-%02d", i+1))
+			require.NoError(t, st.GetDB().WithContext(ctx).Create(&model.TgChatAlert2{ChatID: dbChat.ID, PurchaseDate: date}).Error)
+		}
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			require.Contains(t, request.URL.Path, "sendMessage")
+			require.Equal(t, strconv.FormatInt(dbChat.SourceID, 10), formData["chat_id"])
+			require.Contains(t, formData["text"], "Your alert2 subscriptions (1/2):")
+			require.Contains(t, formData["text"], "Purchase date: 2024-10-11")
+
+			var markup models.InlineKeyboardMarkup
+			require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
+			require.Equal(t, 11, len(markup.InlineKeyboard))
+			require.Equal(t, "Next »", markup.InlineKeyboard[len(markup.InlineKeyboard)-1][0].Text)
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":1}}`))}, nil
+		})
+
+		interaction.TgBot.ProcessUpdate(ctx, newUpdate(dbChat.SourceID, "en", "/settings"))
+		time.Sleep(time.Millisecond * 100)
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			require.Contains(t, request.URL.Path, "editMessageText")
+			require.Equal(t, "1", formData["message_id"])
+			require.Contains(t, formData["text"], "Your alert2 subscriptions (2/2):")
+			require.Contains(t, formData["text"], "Purchase date: 2024-10-01")
+
+			var markup models.InlineKeyboardMarkup
+			require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
+			require.Equal(t, 2, len(markup.InlineKeyboard))
+			require.Equal(t, "« Prev", markup.InlineKeyboard[len(markup.InlineKeyboard)-1][0].Text)
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			require.Contains(t, request.URL.Path, "answerCallbackQuery")
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		interaction.TgBot.ProcessUpdate(ctx, newCallbackQuery(dbChat.SourceID, "en", testSettingsCallbackPrefix+"page:2"))
+		time.Sleep(time.Millisecond * 100)
+
+		var oldestAlert model.TgChatAlert2
+		require.NoError(t, st.GetDB().WithContext(ctx).Where("chat_id = ?", dbChat.ID).Order("purchase_date ASC").First(&oldestAlert).Error)
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			require.Contains(t, request.URL.Path, "editMessageText")
+			require.Contains(t, formData["text"], "Your alert2 subscriptions (1/1):")
+
+			var markup models.InlineKeyboardMarkup
+			require.NoError(t, json.Unmarshal([]byte(formData["reply_markup"]), &markup))
+			require.Equal(t, 10, len(markup.InlineKeyboard))
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
+			formData := suite.ParseRequestBody(t, request)
+
+			require.Contains(t, request.URL.Path, "answerCallbackQuery")
+			require.Equal(t, "Subscription deleted.", formData["text"])
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+		})
+
+		interaction.TgBot.ProcessUpdate(ctx, newCallbackQuery(dbChat.SourceID, "en", fmt.Sprintf("%sdel:%d:2", testSettingsCallbackPrefix, oldestAlert.ID)))
+		time.Sleep(time.Millisecond * 100)
+
+		var count int64
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChatAlert2{}).Where("chat_id = ?", dbChat.ID).Count(&count).Error)
+		require.EqualValues(t, 10, count)
+	})
+}
+
 func Test_HandlerDelete(t *testing.T) {
 	ctx, st := suite.New(t, suite.WithPostgres())
 
@@ -327,6 +457,7 @@ func Test_HandlerDelete(t *testing.T) {
 		// Given: Prepared chat
 		dbChat := &model.TgChat{SourceID: 22, Language: "en"}
 		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(&model.TgChatAlert2{ChatID: dbChat.ID, PurchaseDate: suite.GetDateTime(t, "2023-09-01")}).Error)
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
@@ -346,6 +477,9 @@ func Test_HandlerDelete(t *testing.T) {
 		// Then: The chat should be deleted
 		var count int64
 		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", dbChat.SourceID).Count(&count).Error)
+		require.EqualValues(t, 0, count)
+
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChatAlert2{}).Where("chat_id = ?", dbChat.ID).Count(&count).Error)
 		require.EqualValues(t, 0, count)
 	})
 
@@ -373,6 +507,11 @@ func Test_HandlerDelete(t *testing.T) {
 		// Then: The chat should be deleted
 		var count int64
 		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChat{}).Where("source_id = ?", chatID).Count(&count).Error)
+		require.EqualValues(t, 0, count)
+		require.NoError(t, st.GetDB().WithContext(ctx).Model(&model.TgChatAlert2{}).
+			Joins("JOIN tg_chats ON tg_chats.id = tg_chat_alert2.chat_id").
+			Where("tg_chats.source_id = ?", chatID).
+			Count(&count).Error)
 		require.EqualValues(t, 0, count)
 	})
 }
@@ -596,12 +735,13 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 		// Wait for the handler to be executed
 		time.Sleep(time.Millisecond * 200)
 
-		// Then: The chat should be created and alert2 should be enabled
-		var createdChat model.TgChat
-		require.NoError(t, st.GetDB().WithContext(ctx).Model(&createdChat).Where("source_id = ?", 1).First(&createdChat).Error)
-
-		require.True(t, createdChat.Alert2Enabled)
-		require.Equal(t, suite.GetDateTime(t, "2024-10-01").In(time.Local), createdChat.Alert2Date)
+		// Then: The alert subscription should be created
+		var chat model.TgChat
+		require.NoError(t, st.GetDB().WithContext(ctx).Where("source_id = ?", 1).First(&chat).Error)
+		var alerts []model.TgChatAlert2
+		require.NoError(t, st.GetDB().WithContext(ctx).Where("chat_id = ?", chat.ID).Find(&alerts).Error)
+		require.Len(t, alerts, 1)
+		require.Equal(t, suite.GetDateTime(t, "2024-10-01").In(time.Local), alerts[0].PurchaseDate.In(time.Local))
 	})
 
 	t.Run("should create alert2 for new chat - ru", func(t *testing.T) {
@@ -631,19 +771,21 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 		// Wait for the handler to be executed
 		time.Sleep(time.Millisecond * 200)
 
-		// Then: The chat should be created and alert2 should be enabled
-		var createdChat model.TgChat
-		require.NoError(t, st.GetDB().WithContext(ctx).Model(&createdChat).Where("source_id = ?", 1).First(&createdChat).Error)
-
-		require.True(t, createdChat.Alert2Enabled)
-		require.Equal(t, suite.GetDateTime(t, "2024-10-01").In(time.Local), createdChat.Alert2Date)
+		// Then: The alert subscription should be created
+		var chat model.TgChat
+		require.NoError(t, st.GetDB().WithContext(ctx).Where("source_id = ?", 1).First(&chat).Error)
+		var alerts []model.TgChatAlert2
+		require.NoError(t, st.GetDB().WithContext(ctx).Where("chat_id = ?", chat.ID).Find(&alerts).Error)
+		require.Len(t, alerts, 1)
+		require.Equal(t, suite.GetDateTime(t, "2024-10-01").In(time.Local), alerts[0].PurchaseDate.In(time.Local))
 	})
 
 	t.Run("should create alert2 for existing chat - en", func(t *testing.T) {
 		interaction, mockedHTTPClient := newInteractionHandler()
 
-		dbChat := &model.TgChat{SourceID: 100, Alert2Enabled: false}
+		dbChat := &model.TgChat{SourceID: 100}
 		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(&model.TgChatAlert2{ChatID: dbChat.ID, PurchaseDate: suite.GetDateTime(t, "2024-09-01")}).Error)
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
@@ -669,19 +811,20 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 		// Wait for the handler to be executed
 		time.Sleep(time.Millisecond * 200)
 
-		// Then: The chat should be updated and alert2 should be enabled
-		var updatedChat model.TgChat
-		require.NoError(t, st.GetDB().WithContext(ctx).Model(&updatedChat).Where("source_id = ?", dbChat.SourceID).First(&updatedChat).Error)
-
-		require.True(t, updatedChat.Alert2Enabled)
-		require.Equal(t, suite.GetDateTime(t, "2024-10-01").In(time.Local), updatedChat.Alert2Date)
+		// Then: A new alert subscription should be added without removing previous ones
+		var alerts []model.TgChatAlert2
+		require.NoError(t, st.GetDB().WithContext(ctx).Where("chat_id = ?", dbChat.ID).Order("purchase_date").Find(&alerts).Error)
+		require.Len(t, alerts, 2)
+		require.Equal(t, suite.GetDateTime(t, "2024-09-01").In(time.Local), alerts[0].PurchaseDate.In(time.Local))
+		require.Equal(t, suite.GetDateTime(t, "2024-10-01").In(time.Local), alerts[1].PurchaseDate.In(time.Local))
 	})
 
 	t.Run("should create alert2 for existing chat - ru", func(t *testing.T) {
 		interaction, mockedHTTPClient := newInteractionHandler()
 
-		dbChat := &model.TgChat{SourceID: 200, Alert2Enabled: false}
+		dbChat := &model.TgChat{SourceID: 200}
 		require.NoError(t, st.GetDB().WithContext(ctx).Create(dbChat).Error)
+		require.NoError(t, st.GetDB().WithContext(ctx).Create(&model.TgChatAlert2{ChatID: dbChat.ID, PurchaseDate: suite.GetDateTime(t, "2024-08-01")}).Error)
 
 		mockedHTTPClient.EXPECT().Do(mock.Anything).RunAndReturn(func(request *http.Request) (*http.Response, error) {
 			formData := suite.ParseRequestBody(t, request)
@@ -707,12 +850,12 @@ func Test_handlerAlert2SelectedDate(t *testing.T) {
 		// Wait for the handler to be executed
 		time.Sleep(time.Millisecond * 200)
 
-		// Then: The chat should be updated and alert2 should be enabled
-		var updatedChat model.TgChat
-		require.NoError(t, st.GetDB().WithContext(ctx).Model(&updatedChat).Where("source_id = ?", dbChat.SourceID).First(&updatedChat).Error)
-
-		require.True(t, updatedChat.Alert2Enabled)
-		require.Equal(t, suite.GetDateTime(t, "2024-10-01").In(time.Local), updatedChat.Alert2Date)
+		// Then: A new alert subscription should be added without removing previous ones
+		var alerts []model.TgChatAlert2
+		require.NoError(t, st.GetDB().WithContext(ctx).Where("chat_id = ?", dbChat.ID).Order("purchase_date").Find(&alerts).Error)
+		require.Len(t, alerts, 2)
+		require.Equal(t, suite.GetDateTime(t, "2024-08-01").In(time.Local), alerts[0].PurchaseDate.In(time.Local))
+		require.Equal(t, suite.GetDateTime(t, "2024-10-01").In(time.Local), alerts[1].PurchaseDate.In(time.Local))
 	})
 }
 

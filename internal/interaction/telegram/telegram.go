@@ -25,12 +25,15 @@ type PricesRepository interface {
 
 type ChatsRepository interface {
 	EnableAlert1(ctx context.Context, chatID int64) error
-	EnableAlert2(ctx context.Context, chatID int64, date time.Time) error
+	CreateAlert2Subscription(ctx context.Context, chatID int64, date time.Time) error
 	DisableAlerts(ctx context.Context, chatID int64) error
 	DeleteChat(ctx context.Context, chatID int64) error
 	SetLanguage(ctx context.Context, chatID int64, language string) error
 	GetLanguage(ctx context.Context, chatID int64) (string, error)
 	GetChat(ctx context.Context, chatID int64) (*model.TgChat, error)
+	ListAlert2Subscriptions(ctx context.Context, chatID int64) ([]*model.TgChatAlert2, error)
+	ListAlert2SubscriptionsPaged(ctx context.Context, chatID int64, limit, offset int) ([]*model.TgChatAlert2, int64, error)
+	DeleteAlert2Subscription(ctx context.Context, chatID int64, subscriptionID int64) error
 }
 
 type Interaction struct {
@@ -43,7 +46,10 @@ type Interaction struct {
 	supportedLangs   map[string]struct{}
 }
 
-const languageCallbackPrefix = "lang:"
+const (
+	languageCallbackPrefix = "lang:"
+	settingsCallbackPrefix = "settings:"
+)
 
 var botCommandDefinitions = []struct {
 	command           string
@@ -88,11 +94,13 @@ func NewInteraction(logger *slog.Logger, token string, client tg.HttpClient, bun
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/alert1", tg.MatchTypeExact, cnt.handlerAlert1)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/alert2", tg.MatchTypeExact, cnt.handlerAlert2)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/help", tg.MatchTypeExact, cnt.handlerHelp)
+	b.RegisterHandler(tg.HandlerTypeMessageText, "/settings", tg.MatchTypeExact, cnt.handlerSettings)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/info", tg.MatchTypeExact, cnt.handlerInfo)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/delete", tg.MatchTypeExact, cnt.handlerDelete)
 	b.RegisterHandler(tg.HandlerTypeMessageText, "/stop", tg.MatchTypeExact, cnt.handlerStop)
 	b.RegisterHandler(tg.HandlerTypeCallbackQueryData, languageCallbackPrefix, tg.MatchTypePrefix, cnt.handlerLanguageSelection)
 	b.RegisterHandler(tg.HandlerTypeCallbackQueryData, calendar.Prefix, tg.MatchTypePrefix, cnt.handlerAlert2CalendarCallback)
+	b.RegisterHandler(tg.HandlerTypeCallbackQueryData, settingsCallbackPrefix, tg.MatchTypePrefix, cnt.handlerSettingsCallback)
 
 	cnt.TgBot = b
 	cnt.cal = cal

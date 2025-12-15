@@ -77,23 +77,28 @@ func (that *AlertUseCase) Run(ctx context.Context) {
 	parallelSend.SetLimit(ParallelSendLimit)
 
 	for _, chat := range chats {
-		parallelSend.Go(func() error {
-			if chat.Alert1Enabled {
+		if chat.Alert1Enabled {
+			parallelSend.Go(func() error {
 				if err = that.tgIntegration.SendMessage(parallelSendCtx, chat.SourceID, localizedAlert1Lookup[chat.GetLanguageCode()]); err != nil {
 					log.Error("failed to send alert1", "error", err, "chat_id", chat.SourceID)
-					return nil
 				}
+				return nil
+			})
+		}
+
+		for _, alert := range chat.Alerts2 {
+			if len(alert.BuyingPrices) == 0 {
+				continue
 			}
 
-			if chat.Alert2Enabled && len(chat.BuyingPrices) > 0 {
-				textForAlert2 := that.tgIntegration.PricesWithGainToString(chat.GetLanguageCode(), prices, chat.BuyingPrices)
+			parallelSend.Go(func() error {
+				textForAlert2 := that.tgIntegration.PricesWithGainToString(chat.GetLanguageCode(), prices, alert.BuyingPrices)
 				if err = that.tgIntegration.SendMessage(parallelSendCtx, chat.SourceID, textForAlert2); err != nil {
 					log.Error("failed to send alert2", "error", err, "chat_id", chat.SourceID)
-					return nil
 				}
-			}
-			return nil
-		})
+				return nil
+			})
+		}
 	}
 
 	// Wait for all parallel sends to finish
