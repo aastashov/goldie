@@ -20,8 +20,8 @@
     "translation": "Gram"
   },
   {
-    "id": "columnBuy",
-    "translation": "Buy"
+    "id": "columnPurchase",
+    "translation": "Purchase"
   },
   {
     "id": "columnSell",
@@ -89,7 +89,7 @@
   },
   {
     "id": "chooseMonth",
-    "translation": "📅 {{.Year}} — choose month:"
+    "translation": "📅 {{.Year}} — Choose month:"
   },
   {
     "id": "chooseMonth.prev",
@@ -97,7 +97,7 @@
   },
   {
     "id": "chooseDay",
-    "translation": "📅 {{.Year}} {{.Month}} — choose day:"
+    "translation": "📅 {{.Year}} {{.Month}} — Choose day:"
   },
   {
     "id": "chooseDay.prev",

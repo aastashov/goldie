@@ -20,8 +20,8 @@
     "translation": "Грамм"
   },
   {
-    "id": "columnBuy",
-    "translation": "Покупка"
+    "id": "columnPurchase",
+    "translation": "Обратный выкуп"
   },
   {
     "id": "columnSell",
@@ -29,7 +29,7 @@
   },
   {
     "id": "columnGain",
-    "translation": "Прибыль (%)"
+    "translation": "Выигрыш (%)"
   },
   {
     "id": "helpMessage",
@@ -89,11 +89,19 @@
   },
   {
     "id": "chooseMonth",
-    "translation": "📅 {{.Year}} — выберите месяц:"
+    "translation": "📅 {{.Year}} — Выберите месяц:"
+  },
+  {
+    "id": "chooseMonth.prev",
+    "translation": "« Года"
   },
   {
     "id": "chooseDay",
-    "translation": "📅 {{.Year}} {{.Month}} — выберите день:"
+    "translation": "📅 {{.Year}} {{.Month}} — Выберите день:"
+  },
+  {
+    "id": "chooseDay.prev",
+    "translation": "« Месяцы"
   },
   {
     "id": "month.Jan",

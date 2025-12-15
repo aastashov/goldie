@@ -20,7 +20,7 @@ func (that *Interaction) PricesToString(languageCode string, prices []*model.Gol
 	currentDate := prices[0].Date
 	title, _ := that.renderLocaledMessage(languageCode, "goldPricesTitle", "Date", currentDate.Format("2006-01-02"))
 	headerWeight, _ := that.renderLocaledMessage(languageCode, "columnWeight")
-	headerBuy, _ := that.renderLocaledMessage(languageCode, "columnBuy")
+	headerBuy, _ := that.renderLocaledMessage(languageCode, "columnPurchase")
 	headerSell, _ := that.renderLocaledMessage(languageCode, "columnSell")
 
 	var sb strings.Builder
@@ -50,7 +50,7 @@ func (that *Interaction) PricesWithGainToString(languageCode string, prices []*m
 	currentDate := prices[0].Date
 	title, _ := that.renderLocaledMessage(languageCode, "goldPricesTitle", "Date", currentDate.Format("2006-01-02"))
 	headerWeight, _ := that.renderLocaledMessage(languageCode, "columnWeight")
-	headerBuy, _ := that.renderLocaledMessage(languageCode, "columnBuy")
+	headerBuy, _ := that.renderLocaledMessage(languageCode, "columnPurchase")
 	headerSell, _ := that.renderLocaledMessage(languageCode, "columnSell")
 	headerGain, _ := that.renderLocaledMessage(languageCode, "columnGain")
 
